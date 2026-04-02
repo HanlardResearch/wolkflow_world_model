@@ -1,139 +1,325 @@
-
 \section{Methodology}
 
-在本节中，我们正式提出 \textbf{Counterfactual World-Model Evolution (CWME)} 框架。CWME 将多智能体调度问题重新表述为在一个可进化的协作图结构上的序列决策问题。如图~\ref{fig:framework} 所示，我们的方法由四个核心模块组成：(1) 工作流潜在世界模型，用于预测动作后果；(2) 反事实信用分配机制，用于量化智能体贡献；(3) 动作空间与图结构进化机制，用于自适应调整协作拓扑；(4) 短视距进化调度器，用于基于预测进行决策。
+本节提出 \textbf{Counterfactual World-Model Evolution (CWME)} 框架。与将多智能体调度视为单一路径、单终局监督的传统做法不同，CWME 将一次任务求解过程建模为一个\emph{可分叉、可回传、可学习}的工作流决策系统：调度器在每个时刻生成一组互补的候选智能体分支，系统在真实环境中执行这些分支并形成共享前缀树，随后基于终局结果对中间决策进行树式信用回传，最后使用这些高信息密度标签训练一个结构化潜在世界模型。该设计将\emph{多样化探索}、\emph{过程级价值建模}与\emph{反事实信用学习}统一到同一训练闭环中。图~\ref{fig:framework} 给出了整体框架。
+
+需要强调的是，CWME 的当前实现聚焦于\textbf{原子智能体调用上的工作流演化}：所谓“evolution”主要体现在候选分支集合的动态保留、共享前缀价值的递归传播，以及由此带来的调度策略逐步修正，而非强依赖显式的图重写或宏动作搜索。这样的实现选择使方法与当前系统代码严格对齐，同时为未来扩展到图结构变异与宏动作抽取保留了自然接口。
 
 \subsection{Problem Formulation}
 
-我们将多智能体工作流调度建模为一个具有动态动作空间和图结构的序列决策过程。给定任务描述 $x$，系统在时刻 $t$ 的状态定义为 $s_t$，当前协作图结构为 $G_t=(V_t, E_t)$，其中 $V_t$ 表示可用智能体节点集合，$E_t$ 表示允许的执行依赖边。
+给定任务描述 $x$，系统在时刻 $t$ 的可观测状态记为 $o_t$。与标准的文本状态不同，我们将其显式分解为五个互补部分：
+\begin{equation}
+    o_t = \left(x, H_t, E_t, B_t, G_t\right),
+\end{equation}
+其中 $H_t$ 为已执行工作流前缀，$E_t$ 为当前可见证据集合，$B_t$ 为预算状态，$G_t$ 为前缀诱导的协作图。
 
-\paragraph{State Space.}
-状态 $s_t$ 包含任务语义嵌入、已执行的历史动作序列、收集到的中间证据、剩余预算约束（如 Token 配额、延迟上限）以及当前图结构 $G_t$ 的编码。
+\paragraph{Prefix-Induced Collaboration Graph.}
+在当前实现中，图结构并非一个跨任务共享的静态图，而是由当前路径前缀动态诱导而成。我们记
+\begin{equation}
+    G_t = (V, E_t, \Xi_t),
+\end{equation}
+其中 $V$ 是已注册智能体角色集合，$E_t$ 是从前缀执行序列中观测到的有向转移边，$\Xi_t$ 是节点局部统计量，包括 usage count、success rate、average cost、average reward 和 average credit。该图是\emph{path-local} 且 \emph{prefix-local} 的：它只描述当前分支在时刻 $t$ 之前真实发生过的协作关系。
 
 \paragraph{Action Space.}
-时刻 $t$ 的可用动作集合定义为 $\mathcal{A}_t = \mathcal{P} \cup \mathcal{M}_t \cup \mathcal{U}_t$，其中：
-\begin{itemize}
-    \item $\mathcal{P}$ 为原子智能体调用集合（Primitive Actions）；
-    \item $\mathcal{M}_t$ 为当前已发现的宏动作集合（Macro-actions），即高频子轨迹的压缩；
-    \item $\mathcal{U}_t$ 为图结构变异操作集合（Structural Mutations），包括加边、删边、节点合并或拆分等。
-\end{itemize}
+当前动作空间由原子智能体调用构成。记注册智能体集合为 $\mathcal{A}$，则时刻 $t$ 的候选动作为
+\begin{equation}
+    a_t \in \mathcal{A}.
+\end{equation}
+在当前实现中，动作的语义是“选择下一位执行的智能体”，而非直接生成文本答案。虽然 CWME 的接口天然兼容宏动作与结构变异操作，但本文所述的当前实例严格使用 primitive agent actions，以便稳定估计世界模型和信用标签。
 
 \paragraph{Objective.}
-我们的目标不是最大化单一的成功率，而是优化多目标效用函数。令轨迹 $\tau = \{(s_t, a_t)\}_{t=0}^T$，总回报定义为：
+CWME 的目标不是简单最大化终局准确率，而是在真实执行成本约束下学习\emph{可解释的过程价值函数}。对于任一前缀状态 $o_t$ 及动作 $a_t$，我们关注两个层面的量：
+\begin{itemize}
+    \item \textbf{终局任务质量}：由 evaluator 在路径结束时给出，如多项选择任务中的 $\pm 1$ 奖励；
+    \item \textbf{过程级边际贡献}：由共享前缀树上的回传值刻画，反映某一步选择是否将系统推向更优或更差的子树。
+\end{itemize}
+因此，CWME 的核心学习目标不是拟合稀疏终局奖励本身，而是拟合\emph{由终局结果诱导出的中间决策价值与优势信号}。
+
+\subsection{Diversity-Aware Branching Scheduler}
+
+CWME 的在线调度器仍采用 LLM scheduler 作为高层控制器，但其输出不再被直接压缩为单一动作，而是先生成一个按置信度排序的候选集合：
 \begin{equation}
-    J(\tau) = \mathbb{E}\left[ \sum_{t=0}^T \gamma^t \left( \alpha r_t^{\text{success}} + \beta r_t^{\text{info}} - \gamma c_t^{\text{cost}} - \lambda l_t^{\text{latency}} - \mu r_t^{\text{redundancy}} \right) \right]
-    \label{eq:objective}
+    \mathcal{D}_t = \left\{(a_i, p_i)\right\}_{i=1}^{K}, \qquad \sum_{i=1}^{K} p_i = 1,
 \end{equation}
-其中 $r$ 表示效用奖励，$c$ 和 $l$ 分别表示成本和延迟惩罚，$\gamma$ 为折扣因子。调度器 $\pi_\theta$ 旨在学习一个策略，在动态变化的 $G_t$ 和 $\mathcal{A}_t$ 下最大化 $J(\tau)$。
+其中 $a_i$ 为候选智能体，$p_i$ 为归一化置信度。
+
+\paragraph{Confidence-Diversity Joint Selection.}
+仅按置信度贪婪保留 top-1 会迅速导致路径塌缩，使大量中间步骤缺少对比监督。为此，我们定义一个保留算子 $\Psi$，同时考虑\emph{置信度充分性}与\emph{能力互补性}：
+\begin{equation}
+    \widetilde{\mathcal{A}}_t = \Psi(\mathcal{D}_t, o_t), \qquad 1 \le |\widetilde{\mathcal{A}}_t| \le K.
+\end{equation}
+具体而言，保留分支数由两部分共同决定：
+\begin{equation}
+    k_t = \max\left(k_{\text{conf}}(\mathcal{D}_t), \; k_{\text{div}}(o_t)\right),
+\end{equation}
+其中 $k_{\text{conf}}$ 来自置信度阈值规则，$k_{\text{div}}$ 则由状态中的冲突程度、证据完备度与当前步骤深度决定。早期步骤、证据覆盖不足或存在答案冲突时，系统会强制保留至少两个互补分支；当工作流已经接近收敛且无明显冲突时，调度器才允许收缩到单分支终止。
+
+\paragraph{Complementary Capability Preference.}
+在固定 $k_t$ 后，CWME 不简单取前 $k_t$ 个候选，而是偏好\emph{异质能力组合}。记候选动作的阶段标签、工具依赖和输出类型分别为
+$\text{stage}(a)$、$\text{tool}(a)$ 与 $\text{type}(a)$，则多样性选择可写为：
+\begin{equation}
+    \widetilde{\mathcal{A}}_t
+    =
+    \arg\max_{\mathcal{S} \subseteq \mathcal{D}_t,\ |\mathcal{S}| = k_t}
+    \sum_{(a,p)\in \mathcal{S}} p
+    +
+    \eta \cdot \mathrm{Div}(\mathcal{S}),
+\end{equation}
+其中 $\mathrm{Div}(\mathcal{S})$ 奖励不同阶段、不同工具属性以及不同输出类型的组合。该策略使得系统更容易形成“reasoning + evidence + verification”这类互补分支，而非重复调用同一能力的冗余路径。
+
+\paragraph{Trajectory Branching.}
+若 $|\widetilde{\mathcal{A}}_t| > 1$，系统会从当前前缀复制出多个 sibling paths，并分别执行其中一个候选动作。由于这些路径共享相同前缀，它们天然形成一棵以真实工作流为边的前缀树，为后续的信用回传提供了结构基础。
+
+\subsection{Prefix-Tree Credit Construction}
+
+CWME 的关键创新在于：我们不直接把每个中间步骤的原始 shaping reward 当作世界模型标签，而是先基于所有 sibling paths 的终局结果构造一棵共享前缀树，再进行回传。
+
+\paragraph{Leaf Reward.}
+对于任一路径 $\tau$，其终局叶子值记为
+\begin{equation}
+    G(\tau),
+\end{equation}
+它由任务 evaluator 给出。在分类任务中，$G(\tau)\in\{-1,+1\}$；在开放式任务中，$G(\tau)$ 可以是连续分数。重要的是，$G(\tau)$ 直接反映任务终局质量，而不混入过程成本 shaping。
+
+\paragraph{Prefix Value.}
+令 $p$ 表示一段工作流前缀，$\mathcal{L}(p)$ 表示所有以 $p$ 为前缀的叶子路径集合，则其回传值定义为叶子均值：
+\begin{equation}
+    V(p) = \frac{1}{|\mathcal{L}(p)|}\sum_{\tau \in \mathcal{L}(p)} G(\tau).
+    \label{eq:prefix_value}
+\end{equation}
+这一定义有两个重要性质：其一，它对多分支终局结果给出了稳定的期望估计；其二，它能让共享前缀节点显式吸收来自不同后继分支的监督，而不是只看到一条单路径回报。
+
+\paragraph{Action Value and Step Credit.}
+若在前缀 $p$ 上执行动作 $a$ 得到子前缀 $p\oplus a$，则该边的动作值定义为
+\begin{equation}
+    Q(p,a) = V(p \oplus a).
+    \label{eq:action_value}
+\end{equation}
+对应的过程级增量信用定义为
+\begin{equation}
+    C_{\text{step}}(p,a) = Q(p,a) - V(p).
+    \label{eq:step_credit}
+\end{equation}
+其中 $C_{\text{step}}$ 衡量当前动作相对父节点平均价值所带来的边际改进，它直接对应数据集中 \texttt{step\_credit} 的语义。
+
+\paragraph{Sibling-Aware Leave-One-Out Gap.}
+为了获得更强的反事实监督，我们进一步引入同父节点下的兄弟分支基线。记
+\begin{equation}
+    \mathcal{S}(p,a)=\{p' \mid p' \text{ 与 } p\oplus a \text{ 共享父前缀 } p,\ p'\neq p\oplus a\},
+\end{equation}
+则 leave-one-out gap 定义为
+\begin{equation}
+    \Delta(p,a)=
+    \begin{cases}
+        Q(p,a)-\frac{1}{|\mathcal{S}(p,a)|}\sum_{p' \in \mathcal{S}(p,a)}V(p'), & |\mathcal{S}(p,a)|>0,\\
+        C_{\text{step}}(p,a), & \text{otherwise}.
+    \end{cases}
+    \label{eq:loo_gap}
+\end{equation}
+该量不再是旧式“从该步起的累计回报”，而是一个真正的\emph{兄弟对照优势}：它衡量该动作比可替代分支平均水平好多少或差多少。
+
+\paragraph{Targets Written to the Dataset.}
+设当前样本对应的前缀和动作为 $(p_t,a_t)$，CWME 将以下量写入离线数据集：
+\begin{align}
+    r_t^{\text{wm}} &= Q(p_t,a_t),\\
+    v_t^{\text{wm}} &= Q(p_t,a_t),\\
+    c_t^{\text{wm}} &= \text{cost}(a_t),\\
+    d_t^{\text{wm}} &= \mathbb{I}[t \text{ is terminal}],\\
+    \delta_t^{\text{wm}} &= C_{\text{step}}(p_t,a_t),\\
+    \ell_t^{\text{wm}} &= \Delta(p_t,a_t).
+\end{align}
+此外，我们还构造一个两步信用回报
+\begin{equation}
+    h_t^{(2)} = \delta_t^{\text{wm}} + \gamma \delta_{t+1}^{\text{wm}},
+\end{equation}
+用于提供短视距过程监督。由此，数据集中 \texttt{outcome.reward}、\texttt{returns.mc\_return}、\texttt{credit\_targets.step\_credit} 和 \texttt{credit\_targets.leave\_one\_out\_gap} 分别对应 $r_t^{\text{wm}}$、$v_t^{\text{wm}}$、$\delta_t^{\text{wm}}$ 和 $\ell_t^{\text{wm}}$。需要特别说明的是，当前实现中 $r_t^{\text{wm}}$ 与 $v_t^{\text{wm}}$ 都被实例化为同一个 post-action subtree value $Q(p_t,a_t)$。这种看似冗余的设计来自工程接口兼容性：\texttt{outcome.reward} 与 \texttt{returns.mc\_return} 是历史字段名，但在现版本中它们共同监督\emph{动作执行后的子树价值}，而真正表达边际贡献和反事实优势的信号由 $\delta_t^{\text{wm}}$ 与 $\ell_t^{\text{wm}}$ 承担。
+
+\subsection{Structured World-Model Dataset Construction}
+
+为避免时序对齐错误，CWME 在\emph{动作执行前}记录状态快照，并在\emph{任务结束后}用真实工作流结果回填下一状态与监督标签。对于每个时间步，我们构造一步转移样本
+\begin{equation}
+    \mathcal{T}_t = \left(G_t, o_t, a_t, G_{t+1}, o_{t+1}, y_t\right),
+\end{equation}
+其中 $y_t$ 包含上节定义的世界模型标签以及若干辅助信号。所有由同一任务分叉得到的 sibling paths 共享同一个 task-level \texttt{episode\_id}，并通过 \texttt{path\_id} 区分不同分支。这一设计保证了共享前缀树可以在任务内部被完整重建，同时避免不同任务之间的错误混合。
+
+\paragraph{Pre-/Post-Action Graph Semantics.}
+当前实现中：
+\begin{equation}
+    G_t = \textsc{BuildGraph}(H_{<t}), \qquad
+    G_{t+1} = \textsc{BuildGraph}(H_{\le t}),
+\end{equation}
+即 \texttt{graph} 严格表示当前动作前的前缀图，而 \texttt{next\_graph} 表示当前动作后的前缀图。这一设计避免了旧版本中“next graph 与当前图几乎无差异”的语义漂移。
+
+\paragraph{Optional Synthetic Termination Transition.}
+当在线 policy 在轨迹尾部显式补入 \texttt{TerminatorAgent} 时，recorder 可以额外写入一个 synthetic termination step，以便世界模型清晰观测到 $d_t^{\text{wm}}=1$ 的终止转移。在该步中，\texttt{graph} 与 \texttt{next\_graph} 都等于最终前缀图，动作成本为零，而监督目标仍来自同一条路径的树回传结果。这样做避免了“最后一个真实执行步骤既要表达任务推进又要承担终止语义”的混淆。
+
+\paragraph{Dense Auxiliary Targets.}
+为了在终局监督之外提供更稳定的训练信号，我们进一步构造一组启发式 workflow 诊断量：
+\begin{align}
+    \mathrm{progress}_t &= \frac{\#\text{successful steps}}{T_{\max}},\\
+    \mathrm{coverage}_t &= \frac{\#\text{reasoning successes}+\#\text{tool successes}}{\max(1,\#\text{steps})},\\
+    \mathrm{conflict}_t &= \frac{\#\text{failed steps}}{\max(1,\#\text{steps})},\\
+    \mathrm{redundancy}_t &= \frac{\#\text{repeated successful actions}}{\max(1,\#\text{steps})},
+\end{align}
+并定义终止准备度为
+\begin{equation}
+    \mathrm{ready}_t =
+    \begin{cases}
+        1, & d_t^{\text{wm}}=1,\\
+        \min\left(1,\ 0.35\,\mathbb{I}[\text{reasoning exists}] + 0.35\,\mathbb{I}[\text{tool evidence exists}] + 0.30(1-\mathrm{conflict}_t)\right), & \text{otherwise}.
+    \end{cases}
+\end{equation}
+这些量不会替代真实奖励，而是作为 dense supervision 帮助模型学习工作流阶段信息。当前实现中，不确定性头使用 $\mathrm{conflict}_t$ 作为稳定代理信号；valid-action 头使用一个宽松的 registered-agent mask 作为正则化约束。虽然这不是最终的最优标签形式，但它在无需额外 judge model 的条件下显著提高了训练稳定性，并为后续替换成更强教师信号保留了接口。
 
 \subsection{Workflow Latent World Model}
 
-为了支持长程规划而不产生高昂的真实执行成本，我们学习一个潜在空间世界模型 $\mathcal{M}_\phi$，用于模拟工作流动力学。
+在获得上述结构化样本后，CWME 训练一个潜在世界模型 $\mathcal{M}_\phi$。与仅编码文本的做法不同，我们显式建模任务、轨迹、证据、预算、图结构和当前动作的多模态观测。
 
-\paragraph{State Encoding.}
-我们使用编码器 $Enc_\psi$ 将高维异构状态 $s_t$ 映射到低维潜在状态 $z_t \in \mathbb{R}^d$：
-\begin{equation}
-    z_t = Enc_\psi(s_t, G_t)
-\end{equation}
-该编码过程强制信息瓶颈，仅保留对预测未来动力学必要的信息，过滤文本噪声。
-
-\paragraph{Dynamics and Outcome Prediction.}
-世界模型由转移函数 $f_\phi$ 和多个结果预测头（Outcome Heads）组成。给定当前潜在状态 $z_t$ 和动作 $a_t$，模型预测下一时刻状态及多维结果信号：
-\begin{equation}
-    \hat{z}_{t+1}, \hat{r}_{t+1}, \hat{c}_{t+1}, \hat{u}_{t+1} = f_\phi(z_t, a_t, G_t)
-\end{equation}
-其中 $\hat{r}$ 为效用预测，$\hat{c}$ 为成本预测，$\hat{u}$ 为不确定性估计（通过集成学习或概率输出方差计算）。
-
-\paragraph{Training Objective.}
-世界模型通过最小化以下多任务损失函数进行训练：
-\begin{equation}
-    \mathcal{L}_{\text{WM}}(\phi, \psi) = \mathcal{L}_{\text{trans}}(z_{t+1}, \hat{z}_{t+1}) + \lambda_r \mathcal{L}_{\text{reg}}(r_{t+1}, \hat{r}_{t+1}) + \lambda_c \mathcal{L}_{\text{reg}}(c_{t+1}, \hat{c}_{t+1}) + \lambda_u \mathcal{L}_{\text{unc}}(u_{t+1}, \hat{u}_{t+1})
-\end{equation}
-其中 $\mathcal{L}_{\text{trans}}$ 为潜在状态的重构或对比损失，$\mathcal{L}_{\text{reg}}$ 为均方误差损失，$\mathcal{L}_{\text{unc}}$ 为负对数似然损失。模型仅使用真实执行产生的轨迹数据进行监督训练，不依赖额外标注。
-
-\subsection{Counterfactual Credit Assignment}
-
-传统的强化学习信用分配往往基于终局奖励的稀疏反馈，难以区分多智能体协作中个体的边际贡献。我们利用训练好的世界模型进行反事实推理，计算每个动作的因果信用。
-
-\paragraph{Value Estimation.}
-对于状态 $z_t$ 下的动作序列 $A_t = \{a_1, ..., a_k\}$，其预期价值 $\hat{V}(z_t, A_t)$ 通过世界模型进行 $H$ 步想象 rollout 估计：
-\begin{equation}
-    \hat{V}(z_t, A_t) = \mathbb{E}_{\mathcal{M}_\phi} \left[ \sum_{k=0}^H \gamma^k \hat{r}_{t+k} \mid z_t, A_t \right]
-\end{equation}
-
-\paragraph{Credit Calculation.}
-我们定义三种反事实信用指标来量化动作 $a_i \in A_t$ 的贡献：
-\begin{enumerate}
-    \item \textbf{Removal Credit:} 衡量动作的必要性。
-    \begin{equation}
-        C_{\text{remove}}(a_i) = \hat{V}(z_t, A_t) - \hat{V}(z_t, A_t \setminus \{a_i\})
-    \end{equation}
-    \item \textbf{Replacement Credit:} 衡量动作的可替代性及最优性。
-    \begin{equation}
-        C_{\text{replace}}(a_i) = \hat{V}(z_t, A_t) - \max_{a' \in \mathcal{C}_{\text{cand}}} \hat{V}(z_t, (A_t \setminus \{a_i\}) \cup \{a'\})
-    \end{equation}
-    \item \textbf{Shapley Credit:} 衡量动作在协作中的平均边际贡献（采用蒙特卡洛近似）。
-    \begin{equation}
-        C_{\text{shapley}}(a_i) \approx \mathbb{E}_{S \subseteq A_t \setminus \{a_i\}} \left[ \hat{V}(S \cup \{a_i\}) - \hat{V}(S) \right]
-    \end{equation}
-\end{enumerate}
-这些信用值不仅用于更新调度策略 $\pi_\theta$ 的优势函数（Advantage Function），还作为后续结构进化的依据。
-
-\subsection{Action Space and Graph Evolution}
-
-为了适应任务分布漂移和工具失效，CWME 允许动作空间 $\mathcal{A}_t$ 和协作图 $G_t$ 随时间进化。
-
-\paragraph{Macro-Action Discovery.}
-系统定期挖掘具有高反事实信用的高频子轨迹。若序列 $\sigma = (a_i, ..., a_j)$ 在多个任务中 consistently 产生高 $C_{\text{shapley}}$ 且低不确定性，则将其压缩为一个新的宏动作 $m_{\text{new}} \in \mathcal{M}_t$。这有效降低了规划深度，将 $H$ 步规划压缩为 $H/k$ 步。
-
-\paragraph{Graph Mutation.}
-基于信用分析，系统执行离散的结构变异操作 $\mathcal{U}_t$：
+\paragraph{Observation Encoding.}
+给定当前观测 $o_t$，模型首先分别编码：
 \begin{itemize}
-    \item \textbf{Pruning:} 若某边 $(v_i, v_j)$ 长期关联低信用动作，执行 $RemoveEdge(i, j)$。
-    \item \textbf{Split/Merge:} 若某节点 $v_i$ 负载过高且信用分散，执行 $SplitNode(i)$；若多个节点高度协同，执行 $MergeNodes$。
-    \item \textbf{Retirement:} 若某智能体节点长期贡献为负，执行 $RetireNode(i)$。
+    \item 任务表示：题面文本或其轻量特征；
+    \item 步骤序列表示：由历史 agent、action 及数值特征组成的前缀；
+    \item 证据集合表示：包括 reasoning results、tool results 和 recent answers；
+    \item 预算表示：包括 step index、used tokens 和 used cost；
+    \item 图表示：由节点角色、节点统计和邻接矩阵组成；
+    \item 动作表示：由动作名称、动作类型和 estimated cost 构成。
+\end{itemize}
+这些分支经融合后形成当前观测嵌入 $h_t^{\text{obs}}$。
+
+\paragraph{Posterior Latent.}
+当前观测对应的 posterior 分布记为
+\begin{equation}
+    q_\psi(z_t \mid o_t) = \mathcal{N}(\mu_t^{q}, \Sigma_t^{q}),
+\end{equation}
+其中 $z_t$ 是压缩后的潜在工作流状态。它需要同时保留任务语义、协作结构和历史执行模式中对未来转移有预测价值的信息。
+
+\paragraph{Transition Prior.}
+给定当前潜在状态和动作，模型通过一个条件转移模块预测下一时刻 prior：
+\begin{equation}
+    p_\phi(z_{t+1} \mid z_t, a_t, G_t) = \mathcal{N}(\mu_{t+1}^{p}, \Sigma_{t+1}^{p}).
+\end{equation}
+在实现层面，这一转移通过动作编码、图表示和循环隐藏状态共同驱动，反映“在当前协作上下文中执行该智能体后，工作流将如何演化”。
+
+\paragraph{Outcome Heads.}
+在 prior latent 之上，模型同时预测：
+\begin{equation}
+    \hat{y}_t = \left(\hat{r}_t,\hat{c}_t,\hat{d}_t,\hat{v}_t,\hat{u}_t,\hat{m}_t,\hat{a}_t^{\text{aux}}\right),
+\end{equation}
+其中：
+\begin{itemize}
+    \item $\hat{r}_t$ 为过程价值预测；
+    \item $\hat{c}_t$ 为执行成本预测；
+    \item $\hat{d}_t$ 为是否终止的概率；
+    \item $\hat{v}_t$ 为状态价值估计；
+    \item $\hat{u}_t$ 为不确定性预测；
+    \item $\hat{m}_t$ 为 valid-action mask logits；
+    \item $\hat{a}_t^{\text{aux}}$ 为 progress/coverage/conflict/redundancy/readiness 等辅助头。
 \end{itemize}
 
-\paragraph{Selection Criteria.}
-结构变异接受与否基于帕累托前沿（Pareto Frontier）评估，综合考虑成功率、成本、延迟及信用一致性（Credit Fidelity），确保进化方向的多目标最优性。
+\subsection{Learning Objectives}
 
-\subsection{Receding-Horizon Evolutionary Scheduler}
+\paragraph{Latent Dynamics Alignment.}
+为了让模型真正学习一步转移而非仅做静态判别，我们使用下一状态的 posterior 均值来监督当前步预测 prior：
+\begin{equation}
+    \mathcal{L}_{\text{latent}}
+    =
+    \left\|\mu_{t+1}^{p} - \mu_{t+1}^{q}\right\|_{1},
+\end{equation}
+并加入分布对齐项
+\begin{equation}
+    \mathcal{L}_{\text{KL}}
+    =
+    D_{\mathrm{KL}}\!\left(q_\psi(z_{t+1}\mid o_{t+1}) \,\|\, p_\phi(z_{t+1}\mid z_t,a_t,G_t)\right).
+\end{equation}
 
-调度器 $\pi_\theta$ 不再执行简单的贪婪选择，而是基于世界模型进行短视距规划。在每一步 $t$，调度器执行以下流程：
-\begin{enumerate}
-    \item \textbf{Candidate Generation:} 生成候选动作集合 $\mathcal{A}_{\text{cand}} \subseteq \mathcal{A}_t$。
-    \item \textbf{Imaginative Planning:} 对每个候选动作 $a \in \mathcal{A}_{\text{cand}}$，利用世界模型进行 $H$ 步 rollout，计算期望效用 $\mathbb{E}[\hat{V}]$ 及不确定性 $\hat{u}$。
-    \item \textbf{Risk-Aware Scoring:} 计算综合得分 $Score(a) = \mathbb{E}[\hat{V}] - \rho \cdot \hat{u}$，其中 $\rho$ 为风险厌恶系数。
-    \item \textbf{Credit Re-ranking:} 利用历史反事实信用对候选动作进行微调排序。
-    \item \textbf{Execution and Update:} 执行最优动作 $a^*$，收集真实数据用于世界模型校正。
-\end{enumerate}
-该过程可采用 Beam Search 或蒙特卡洛树搜索（MCTS）实现。为了平衡计算效率与规划质量，默认配置采用带不确定性惩罚的 Beam Search。
+\paragraph{Outcome Prediction Losses.}
+对 reward、cost、value 和 uncertainty 采用 smooth-$L_1$ 回归损失，对 done 与 valid-action 采用二元交叉熵损失：
+\begin{align}
+    \mathcal{L}_{\text{reward}} &= \mathrm{SL1}(\hat{r}_t, r_t^{\text{wm}}),\\
+    \mathcal{L}_{\text{cost}} &= \mathrm{SL1}(\hat{c}_t, c_t^{\text{wm}}),\\
+    \mathcal{L}_{\text{done}} &= \mathrm{BCE}(\hat{d}_t, d_t^{\text{wm}}),\\
+    \mathcal{L}_{\text{value}} &= \mathrm{SL1}(\hat{v}_t, v_t^{\text{wm}}),\\
+    \mathcal{L}_{\text{unc}} &= \mathrm{SL1}(\hat{u}_t, \mathrm{conflict}_t),\\
+    \mathcal{L}_{\text{valid}} &= \mathrm{BCE}(\hat{m}_t, m_t^{\text{valid}}).
+\end{align}
+辅助头损失写为
+\begin{equation}
+    \mathcal{L}_{\text{aux}}
+    =
+    \frac{1}{|\mathcal{Y}_{\text{aux}}|}
+    \sum_{y \in \mathcal{Y}_{\text{aux}}}
+    \mathrm{SL1}(\hat{y}, y).
+\end{equation}
 
-\subsection{Training Algorithm}
+\paragraph{Counterfactual Credit Loss.}
+为了让模型学习到“哪一步比兄弟分支更优”的排序结构，我们定义一步 Q 近似
+\begin{equation}
+    \hat{Q}_t = \hat{r}_t - \hat{c}_t + \gamma \hat{v}_t,
+    \label{eq:q_approx}
+\end{equation}
+并用 leave-one-out gap $\ell_t^{\text{wm}}$ 进行双重监督：
+\begin{equation}
+    \mathcal{L}_{\text{cf}}
+    =
+    \mathrm{SL1}(\hat{Q}_t, \ell_t^{\text{wm}})
+    +
+    \mathcal{L}_{\text{rank}}(\hat{Q}_t, \ell_t^{\text{wm}}),
+\end{equation}
+其中 $\mathcal{L}_{\text{rank}}$ 是 pairwise ranking loss，用于保留样本间的相对优劣顺序。这样做的意义在于：即便绝对数值尚未完全校准，模型也能优先学会“哪个分支更值得走”。
 
-CWME 的训练是一个“真实执行 - 模型学习 - 进化”的闭环过程，如算法~\ref{alg:training} 所示。
+\paragraph{Overall Objective.}
+综合以上各项，CWME 的世界模型训练目标为
+\begin{equation}
+    \mathcal{L}_{\text{CWME}}
+    =
+    \lambda_{\text{latent}}\mathcal{L}_{\text{latent}}
+    +
+    \lambda_{\text{KL}}\mathcal{L}_{\text{KL}}
+    +
+    \lambda_{\text{reward}}\mathcal{L}_{\text{reward}}
+    +
+    \lambda_{\text{cost}}\mathcal{L}_{\text{cost}}
+    +
+    \lambda_{\text{done}}\mathcal{L}_{\text{done}}
+    +
+    \lambda_{\text{value}}\mathcal{L}_{\text{value}}
+    +
+    \lambda_{\text{unc}}\mathcal{L}_{\text{unc}}
+    +
+    \lambda_{\text{valid}}\mathcal{L}_{\text{valid}}
+    +
+    \lambda_{\text{aux}}\mathcal{L}_{\text{aux}}
+    +
+    \lambda_{\text{cf}}\mathcal{L}_{\text{cf}}.
+\end{equation}
+
+\subsection{Training Procedure}
+
+算法~\ref{alg:training} 总结了 CWME 的训练闭环。值得注意的是，该闭环由\emph{真实执行}驱动，而非完全依赖 imagined rollout：多样化分支由在线 scheduler 生成，终局结果来自真实 evaluator，树回传则在同一任务的 sibling paths 之间完成。这样一来，世界模型学到的不是凭空假设的“理想规划树”，而是从真实多分支工作流中提炼出的结构化动态规律。
 
 \begin{algorithm}[t]
 \caption{CWME Training Procedure}
 \label{alg:training}
 \begin{algorithmic}[1]
-\REQUIRE Initial scheduler $\pi_\theta$, world model $\mathcal{M}_\phi$, collaboration graph $G_0$
-\ENSURE Optimized policy $\pi_\theta^*$ and evolved graph $G^*$
-\STATE \textbf{Initialize} replay buffer $\mathcal{D} \leftarrow \emptyset$
-\FOR{iteration $k = 1, 2, \dots$}
-    \STATE \textbf{Collect Data:} Execute $N$ tasks using $\pi_\theta$ under $G_k$, collect trajectories $\mathcal{D}_{\text{real}}$
-    \STATE $\mathcal{D} \leftarrow \mathcal{D} \cup \mathcal{D}_{\text{real}}$
-    \STATE \textbf{Update World Model:} Minimize $\mathcal{L}_{\text{WM}}$ on $\mathcal{D}$ to update $\phi, \psi$
-    \STATE \textbf{Compute Credit:} For each action in $\mathcal{D}_{\text{real}}$, compute counterfactual credit $C(a)$ via $\mathcal{M}_\phi$ rollout
-    \STATE \textbf{Update Scheduler:} Update $\theta$ using $C(a)$ as advantage signal (Policy Gradient or BC)
-    \IF{evolution condition met}
-        \STATE \textbf{Evolve Structure:} Perform Macro Discovery and Graph Mutation
-        \STATE Update $G_k \to G_{k+1}$ and $\mathcal{A}_k \to \mathcal{A}_{k+1}$
-        \STATE \textbf{Model Correction:} Perform few-shot real rollout on $G_{k+1}$ to calibrate $\mathcal{M}_\phi$
-    \ENDIF
+\REQUIRE LLM scheduler $\pi_\theta$, world model $\mathcal{M}_\phi$, task distribution $\mathcal{X}$
+\ENSURE Trained world model $\mathcal{M}_\phi$ and refined scheduler traces
+\STATE Initialize dataset buffer $\mathcal{D}\leftarrow \emptyset$
+\FOR{each training iteration}
+    \FOR{task $x \sim \mathcal{X}$}
+        \STATE Execute diversity-aware branching scheduler to obtain sibling workflow paths
+        \STATE Record pre-action snapshots $(G_t,o_t)$ before each decision
+        \STATE Run real agent executions and collect terminal rewards $G(\tau)$
+        \STATE Build prefix tree over sibling paths and compute $V$, $Q$, $C_{\text{step}}$, and $\Delta$
+        \STATE Write step-level transitions $\left(G_t,o_t,a_t,G_{t+1},o_{t+1},y_t\right)$ into $\mathcal{D}$
+    \ENDFOR
+    \STATE Sample minibatches from $\mathcal{D}$
+    \STATE Train $\mathcal{M}_\phi$ with $\mathcal{L}_{\text{CWME}}$
 \ENDFOR
-\STATE \RETURN $\pi_\theta, G_k$
+\STATE \textbf{return} $\mathcal{M}_\phi$
 \end{algorithmic}
 \end{algorithm}
 
-该闭环确保了世界模型始终基于最新协作结构的数据进行训练，而调度策略则基于最准确的因果信用进行优化，从而实现系统的持续自适应进化。
+\paragraph{Forward-Looking Extensibility.}
+尽管本文当前实例聚焦于 primitive-agent scheduling，CWME 的形式化并不局限于此。由于状态已经显式建模 prefix graph，信用标签又建立在共享前缀树之上，因此该框架天然兼容两类后续扩展：其一，将高信用子轨迹压缩为 macro-actions 以缩短规划深度；其二，在更高层上对协作图执行离散结构变异。更重要的是，这些扩展无需改变本文的核心信用回传与世界模型学习机制，只需改变动作集合的定义即可。这使 CWME 既忠实于当前系统实现，又具备向更强自主进化调度器平滑过渡的理论空间。
+
+综上，CWME 将多样化分支生成、共享前缀树回传和结构化潜在世界模型有机耦合：前者确保系统在关键决策点保留互补假设，中者为中间步骤提供高质量的过程级监督，后者则将这些监督转化为可泛化的动态预测能力。这样的设计既提升了方法的可解释性，也为未来将世界模型真正接入规划与 reranking 提供了坚实基础。

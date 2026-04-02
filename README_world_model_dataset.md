@@ -471,3 +471,123 @@ Q(prefix, action) = V(prefix + action)
 4. `credit_targets.step_credit` 是否等于 `action_value - parent_value`。
 5. `credit_targets.leave_one_out_gap` 是否正确体现 sibling baseline。
 6. 同一题不同 `path_id` 的 `episode_id` 是否相同。
+
+---
+
+## 11. 样例数据结构说明
+
+下面给出一个具体例子，帮助理解当前数据集中 `episode -> paths -> steps` 的关系。
+
+假设当前任务是：
+
+```text
+question: "证明 sqrt(2) 是无理数"
+episode_id = md5(workpath | task_type | question)
+```
+
+则可以把一个 `episode` 理解为“同一道题的一次完整求解任务”，其下可能包含多条 sibling paths：
+
+```text
+episode: E_q1
+question: "证明 sqrt(2) 是无理数"
+
+├─ path 0
+│  path_id = 0
+│  ├─ step 0
+│  │  state: 还没有执行任何 agent
+│  │  action: MathReasonerAgent
+│  │  next_state: 生成“反证法”思路
+│  │  record: (episode_id=E_q1, path_id=0, t=0)
+│  ├─ step 1
+│  │  state: 已有反证法思路
+│  │  action: ProofWriterAgent
+│  │  next_state: 写出证明草稿
+│  │  record: (episode_id=E_q1, path_id=0, t=1)
+│  └─ step 2
+│     state: 已有证明草稿
+│     action: TerminatorAgent
+│     next_state: done=True
+│     record: (episode_id=E_q1, path_id=0, t=2)
+│
+├─ path 1
+│  path_id = 1
+│  ├─ step 0
+│  │  state: 还没有执行任何 agent
+│  │  action: SearchAgent
+│  │  next_state: 找到若干参考证明
+│  │  record: (episode_id=E_q1, path_id=1, t=0)
+│  ├─ step 1
+│  │  state: 已有参考证明
+│  │  action: MathReasonerAgent
+│  │  next_state: 整理出正式论证
+│  │  record: (episode_id=E_q1, path_id=1, t=1)
+│  ├─ step 2
+│  │  state: 已有正式论证
+│  │  action: CriticAgent
+│  │  next_state: 发现表述不严谨
+│  │  record: (episode_id=E_q1, path_id=1, t=2)
+│  └─ step 3
+│     state: 已修正论证
+│     action: TerminatorAgent
+│     next_state: done=True
+│     record: (episode_id=E_q1, path_id=1, t=3)
+│
+└─ path 2
+   path_id = 2
+   ├─ step 0
+   │  state: 还没有执行任何 agent
+   │  action: MathReasonerAgent
+   │  next_state: 生成错误思路
+   │  record: (episode_id=E_q1, path_id=2, t=0)
+   ├─ step 1
+   │  state: 有错误思路
+   │  action: CriticAgent
+   │  next_state: 指出矛盾，但未修复
+   │  record: (episode_id=E_q1, path_id=2, t=1)
+   └─ step 2
+      state: 仍未完成证明
+      action: TerminatorAgent
+      next_state: done=True, success=False
+      record: (episode_id=E_q1, path_id=2, t=2)
+```
+
+对应到当前 JSONL 数据的层级关系，可以这样理解：
+
+- `episode`
+  - 表示一道题 / 一个任务实例
+  - 同一题下的所有 sibling paths 共享同一个 `episode_id`
+- `path`
+  - 表示该题下的一条调度探索分支
+  - 不同分支用 `path_id` 区分
+- `step`
+  - 表示该分支上的一次真实动作执行
+  - 每个 step 会落成一条 step-level JSONL record
+
+也就是说，数据文件中并不是“一条记录对应一个 episode”，而是：
+
+```text
+一个 episode
+  -> 包含多条 path
+  -> 每条 path 包含多个 step
+  -> 每个 step 对应一条 JSONL record
+```
+
+如果写成更抽象的形式，就是：
+
+```text
+episode
+  = {path_0, path_1, path_2, ...}
+
+path_k
+  = {step_0, step_1, step_2, ...}
+
+step_t
+  = 一个 transition:
+    (graph_t, state_t, action_t, next_graph_t, next_state_t, outcome_t, targets_t)
+```
+
+因此，当你在构建 world model 数据时：
+
+1. 不要把 `episode` 理解成“单个 step”。
+2. 也不要把 `episode` 理解成“单条 path”。
+3. 更准确的理解是：`episode` 是“同一道题及其所有并行/分支探索路径”的共同任务单元。

@@ -27,6 +27,18 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train a workflow world model from recorder JSONL logs.")
     parser.add_argument("--data-root", type=str, default="results", help="Root directory to search for JSONL files.")
     parser.add_argument(
+        "--train-data-root",
+        type=str,
+        default="",
+        help="Root directory for training JSONL files. When set with --test-data-root, episode splitting is disabled.",
+    )
+    parser.add_argument(
+        "--test-data-root",
+        type=str,
+        default="",
+        help="Root directory for evaluation JSONL files. When set with --train-data-root, episode splitting is disabled.",
+    )
+    parser.add_argument(
         "--dataset-filename",
         type=str,
         default="workflow_world_model",
@@ -234,6 +246,8 @@ def _build_tracker_config(
 ) -> Dict[str, Any]:
     return {
         "data_root": args.data_root,
+        "train_data_root": args.train_data_root,
+        "test_data_root": args.test_data_root,
         "dataset_filename": args.dataset_filename,
         "max_files": args.max_files,
         "max_records": args.max_records,
@@ -284,6 +298,52 @@ def _build_tracker_config(
             "loss_weights": dict(model_config.loss_weights),
         },
     }
+
+
+def resolve_dataset_splits(
+    args: argparse.Namespace,
+) -> Tuple[List[str], List[str], List[Dict], List[Dict], List[Dict]]:
+    train_root = str(args.train_data_root or "").strip()
+    test_root = str(args.test_data_root or "").strip()
+
+    if bool(train_root) != bool(test_root):
+        raise ValueError("--train-data-root and --test-data-root must be provided together.")
+
+    if train_root and test_root:
+        train_files = find_dataset_files(train_root, args.dataset_filename, args.max_files)
+        if not train_files:
+            raise FileNotFoundError(
+                f"No training dataset JSONL files matching '{args.dataset_filename}' were found under '{train_root}'."
+            )
+        test_files = find_dataset_files(test_root, args.dataset_filename, args.max_files)
+        if not test_files:
+            raise FileNotFoundError(
+                f"No evaluation dataset JSONL files matching '{args.dataset_filename}' were found under '{test_root}'."
+            )
+
+        train_records = load_records(train_files, args.max_records)
+        test_records = load_records(test_files, args.max_records)
+        if not train_records:
+            raise ValueError("Training dataset files were found, but no training records could be loaded.")
+        if not test_records:
+            raise ValueError("Evaluation dataset files were found, but no evaluation records could be loaded.")
+
+        all_files = train_files + test_files
+        all_records = train_records + test_records
+        return all_files, train_files, test_files, train_records, test_records
+
+    dataset_files = find_dataset_files(args.data_root, args.dataset_filename, args.max_files)
+    if not dataset_files:
+        raise FileNotFoundError(
+            f"No dataset JSONL files matching '{args.dataset_filename}' were found under '{args.data_root}'."
+        )
+
+    records = load_records(dataset_files, args.max_records)
+    if not records:
+        raise ValueError("Dataset files were found, but no records could be loaded.")
+
+    train_records, test_records = split_by_episode(records, args.val_ratio, args.seed)
+    return dataset_files, dataset_files, [], train_records, test_records
 
 
 class ExperimentTracker:
@@ -701,17 +761,8 @@ def main() -> None:
     args = parse_args()
     set_seed(args.seed)
 
-    dataset_files = find_dataset_files(args.data_root, args.dataset_filename, args.max_files)
-    if not dataset_files:
-        raise FileNotFoundError(
-            f"No dataset JSONL files matching '{args.dataset_filename}' were found under '{args.data_root}'."
-        )
-
-    records = load_records(dataset_files, args.max_records)
-    if not records:
-        raise ValueError("Dataset files were found, but no records could be loaded.")
-
-    train_records, val_records = split_by_episode(records, args.val_ratio, args.seed)
+    dataset_files, train_files, val_files, train_records, val_records = resolve_dataset_splits(args)
+    records = train_records + val_records
     next_records = build_next_state_records(records)
     roles, actions = collect_vocab(records)
     adapter = WorkflowStateAdapter(
@@ -777,6 +828,8 @@ def main() -> None:
             tracker.finish()
 
     print(f"Loaded records: {len(records)} from {len(dataset_files)} files")
+    if train_files and val_files:
+        print(f"Train files: {len(train_files)} | Eval files: {len(val_files)}")
     print(f"Train records: {len(train_records)} | Validation records: {len(val_records)}")
     if best_path:
         print(f"Best checkpoint saved to: {best_path}")
