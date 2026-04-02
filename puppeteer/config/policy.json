@@ -1,0 +1,97 @@
+{
+  "device": {
+    "type": "cuda:0"
+  },
+  "paths": {
+    "model_path": "checkpoints/policy_llm",
+    "checkpoint_path": "checkpoints/policy_llm"
+  },
+  "training": {
+    "training": false,
+    "loading": false,
+    "learning_rate": 1e-4,
+    "gamma": 0.99,
+    "sample_size": 16,
+    "lambda_kl_loss": 0.1,
+    "entropy_coef": 0.01
+  },
+  "agent": {
+    "max_num_agents": 4,
+    "next_num_agents": 4,
+    "max_path": 6,
+    "threshold": 0.5,
+    "reward_factors": {
+      "default": -1.0,
+      "terminator": 0.5,
+      "web_search": -1.5
+    }
+  },
+  "policy_llm": {
+    "model_name": "Qwen3.5-4B"
+  },
+  "llm_scheduler": {
+    "force_deterministic_generation": false,
+    "model_path": "/extrahome0/HF_models/Qwen/Qwen3.5-4B",
+    "mode": "multi",
+    "gpu_ids": [0, 1, 2, 3],
+    "top_k": 4,
+    "backend": "vllm",
+    "tensor_parallel_size": 4,
+    "gpu_memory_utilization": 0.9,
+    "max_model_len": 262144,
+    "dtype": "bfloat16",
+    "enforce_eager": false,
+    "generation": {
+      "max_new_tokens": 131072,
+      "temperature": 0.6,
+      "top_p": 0.95,
+      "top_k": 20,
+      "do_sample": true,
+      "use_beam_search": true,
+      "length_penalty": 1.0,
+      "repetition_penalty": 1.05,
+      "presence_penalty": 0.0,
+      "frequency_penalty": 0.0
+    }
+  },
+  "llm": {
+    "prior": false,
+    "prior_redistribution": false,
+    "redistribution_weight": 0.1
+  },
+  "world_model_dataset": {
+    "enabled": true,
+    "output_dir": "results/world_model_dataset-llm",
+    "use_dataset_subdirs": true,
+    "split_by_time": true,
+    "time_granularity": "second",
+    "filename": "workflow_world_model.jsonl",
+    "max_summary_chars": 240,
+    "include_synthetic_termination": true
+  },
+  "cost": {
+    "scale": 0.1,
+    "growth_rate": 1.0,
+    "inverse": false
+  },
+  "visualization": {
+    "base_path": "results",
+    "dpi": 300,
+    "figure_sizes": {
+      "policy_loss": [
+        12,
+        6
+      ],
+      "entropy": [
+        10,
+        6
+      ],
+      "action_probs": [
+        20,
+        10
+      ]
+    }
+  },
+  "dataset_name": "MMLU-Pro",
+  "dataset_mode": "validation"
+}

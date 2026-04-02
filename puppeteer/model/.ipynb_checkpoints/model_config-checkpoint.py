@@ -1,0 +1,87 @@
+from typing import Dict, Any, Optional, List
+from dataclasses import dataclass
+
+@dataclass
+class ModelConfig:
+    name: str
+    function_name: str     
+    api_model_name: str    
+    provider: str          
+    max_tokens: int      
+    model_size: int   # for open-source models, this is the number of parameters in millions; but for API models, this is just an estimate
+    url: Optional[str] = None      
+    temperature: float = 0.1       
+    description: str = ""          
+
+
+MODEL_REGISTRY: Dict[str, ModelConfig] = {
+    "gpt-3.5": ModelConfig(
+        name = "gpt-3.5",
+        function_name="query_gpt",
+        api_model_name="/extrahome0/HF_models/Qwen/Qwen3.5-35B-A3B-FP8",
+        provider="openai",
+        model_size=35,
+        max_tokens=160000,
+        description="Local Qwen3.5-35B model"
+    ),
+    
+    "gpt-4o": ModelConfig(
+        name = "gpt-4o",
+        function_name="query_gpt4o",
+        api_model_name="/extrahome0/HF_models/Qwen/Qwen3.5-35B-A3B-FP8",
+        provider="openai", 
+        model_size=35,
+        max_tokens=160000,
+        description="Local Qwen3.5-35B model"
+    ),
+    "qwen-2.5-14b": ModelConfig(
+        name = "qwen-2.5-14b",
+        function_name="query_qwen2_5_14b",
+        api_model_name="/extrahome0/HF_models/Qwen/Qwen3.5-35B-A3B-FP8",
+        provider="local",
+        model_size=35,
+        max_tokens=160000,
+        url="http://",
+        description="Local Qwen3.5-35B model"
+    ),
+}
+
+class ModelRegistry:
+    def __init__(self):
+        self.registry = MODEL_REGISTRY.copy()
+    
+    def register_model(self, key: str, config: ModelConfig) -> None:
+        self.registry[key] = config
+    
+    def get_model_config(self, key: str) -> Optional[ModelConfig]:
+        return self.registry.get(key)
+
+    def get_model_size(self, key: str) -> Optional[int]:
+        config = self.get_model_config(key)
+        return config.model_size if config else None    
+    
+    def get_all_models(self) -> Dict[str, ModelConfig]:
+        return self.registry.copy()
+    
+    def get_models_by_provider(self, provider: str) -> Dict[str, ModelConfig]:
+        return {k: v for k, v in self.registry.items() if v.provider == provider}
+    
+    def get_function_name(self, key: str) -> Optional[str]:
+        config = self.get_model_config(key)
+        return config.function_name if config else None
+    
+    def get_api_model_name(self, key: str) -> Optional[str]:
+        config = self.get_model_config(key)
+        return config.api_model_name if config else None
+    
+    def list_available_models(self) -> List[str]:
+        return list(self.registry.keys())
+    
+    def search_models(self, keyword: str) -> Dict[str, ModelConfig]:
+        keyword = keyword.lower()
+        return {
+            k: v for k, v in self.registry.items() 
+            if keyword in k.lower() or keyword in v.display_name.lower()
+        }
+
+model_registry = ModelRegistry()
