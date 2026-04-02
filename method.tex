@@ -1,0 +1,139 @@
+
+\section{Methodology}
+
+在本节中，我们正式提出 \textbf{Counterfactual World-Model Evolution (CWME)} 框架。CWME 将多智能体调度问题重新表述为在一个可进化的协作图结构上的序列决策问题。如图~\ref{fig:framework} 所示，我们的方法由四个核心模块组成：(1) 工作流潜在世界模型，用于预测动作后果；(2) 反事实信用分配机制，用于量化智能体贡献；(3) 动作空间与图结构进化机制，用于自适应调整协作拓扑；(4) 短视距进化调度器，用于基于预测进行决策。
+
+\subsection{Problem Formulation}
+
+我们将多智能体工作流调度建模为一个具有动态动作空间和图结构的序列决策过程。给定任务描述 $x$，系统在时刻 $t$ 的状态定义为 $s_t$，当前协作图结构为 $G_t=(V_t, E_t)$，其中 $V_t$ 表示可用智能体节点集合，$E_t$ 表示允许的执行依赖边。
+
+\paragraph{State Space.}
+状态 $s_t$ 包含任务语义嵌入、已执行的历史动作序列、收集到的中间证据、剩余预算约束（如 Token 配额、延迟上限）以及当前图结构 $G_t$ 的编码。
+
+\paragraph{Action Space.}
+时刻 $t$ 的可用动作集合定义为 $\mathcal{A}_t = \mathcal{P} \cup \mathcal{M}_t \cup \mathcal{U}_t$，其中：
+\begin{itemize}
+    \item $\mathcal{P}$ 为原子智能体调用集合（Primitive Actions）；
+    \item $\mathcal{M}_t$ 为当前已发现的宏动作集合（Macro-actions），即高频子轨迹的压缩；
+    \item $\mathcal{U}_t$ 为图结构变异操作集合（Structural Mutations），包括加边、删边、节点合并或拆分等。
+\end{itemize}
+
+\paragraph{Objective.}
+我们的目标不是最大化单一的成功率，而是优化多目标效用函数。令轨迹 $\tau = \{(s_t, a_t)\}_{t=0}^T$，总回报定义为：
+\begin{equation}
+    J(\tau) = \mathbb{E}\left[ \sum_{t=0}^T \gamma^t \left( \alpha r_t^{\text{success}} + \beta r_t^{\text{info}} - \gamma c_t^{\text{cost}} - \lambda l_t^{\text{latency}} - \mu r_t^{\text{redundancy}} \right) \right]
+    \label{eq:objective}
+\end{equation}
+其中 $r$ 表示效用奖励，$c$ 和 $l$ 分别表示成本和延迟惩罚，$\gamma$ 为折扣因子。调度器 $\pi_\theta$ 旨在学习一个策略，在动态变化的 $G_t$ 和 $\mathcal{A}_t$ 下最大化 $J(\tau)$。
+
+\subsection{Workflow Latent World Model}
+
+为了支持长程规划而不产生高昂的真实执行成本，我们学习一个潜在空间世界模型 $\mathcal{M}_\phi$，用于模拟工作流动力学。
+
+\paragraph{State Encoding.}
+我们使用编码器 $Enc_\psi$ 将高维异构状态 $s_t$ 映射到低维潜在状态 $z_t \in \mathbb{R}^d$：
+\begin{equation}
+    z_t = Enc_\psi(s_t, G_t)
+\end{equation}
+该编码过程强制信息瓶颈，仅保留对预测未来动力学必要的信息，过滤文本噪声。
+
+\paragraph{Dynamics and Outcome Prediction.}
+世界模型由转移函数 $f_\phi$ 和多个结果预测头（Outcome Heads）组成。给定当前潜在状态 $z_t$ 和动作 $a_t$，模型预测下一时刻状态及多维结果信号：
+\begin{equation}
+    \hat{z}_{t+1}, \hat{r}_{t+1}, \hat{c}_{t+1}, \hat{u}_{t+1} = f_\phi(z_t, a_t, G_t)
+\end{equation}
+其中 $\hat{r}$ 为效用预测，$\hat{c}$ 为成本预测，$\hat{u}$ 为不确定性估计（通过集成学习或概率输出方差计算）。
+
+\paragraph{Training Objective.}
+世界模型通过最小化以下多任务损失函数进行训练：
+\begin{equation}
+    \mathcal{L}_{\text{WM}}(\phi, \psi) = \mathcal{L}_{\text{trans}}(z_{t+1}, \hat{z}_{t+1}) + \lambda_r \mathcal{L}_{\text{reg}}(r_{t+1}, \hat{r}_{t+1}) + \lambda_c \mathcal{L}_{\text{reg}}(c_{t+1}, \hat{c}_{t+1}) + \lambda_u \mathcal{L}_{\text{unc}}(u_{t+1}, \hat{u}_{t+1})
+\end{equation}
+其中 $\mathcal{L}_{\text{trans}}$ 为潜在状态的重构或对比损失，$\mathcal{L}_{\text{reg}}$ 为均方误差损失，$\mathcal{L}_{\text{unc}}$ 为负对数似然损失。模型仅使用真实执行产生的轨迹数据进行监督训练，不依赖额外标注。
+
+\subsection{Counterfactual Credit Assignment}
+
+传统的强化学习信用分配往往基于终局奖励的稀疏反馈，难以区分多智能体协作中个体的边际贡献。我们利用训练好的世界模型进行反事实推理，计算每个动作的因果信用。
+
+\paragraph{Value Estimation.}
+对于状态 $z_t$ 下的动作序列 $A_t = \{a_1, ..., a_k\}$，其预期价值 $\hat{V}(z_t, A_t)$ 通过世界模型进行 $H$ 步想象 rollout 估计：
+\begin{equation}
+    \hat{V}(z_t, A_t) = \mathbb{E}_{\mathcal{M}_\phi} \left[ \sum_{k=0}^H \gamma^k \hat{r}_{t+k} \mid z_t, A_t \right]
+\end{equation}
+
+\paragraph{Credit Calculation.}
+我们定义三种反事实信用指标来量化动作 $a_i \in A_t$ 的贡献：
+\begin{enumerate}
+    \item \textbf{Removal Credit:} 衡量动作的必要性。
+    \begin{equation}
+        C_{\text{remove}}(a_i) = \hat{V}(z_t, A_t) - \hat{V}(z_t, A_t \setminus \{a_i\})
+    \end{equation}
+    \item \textbf{Replacement Credit:} 衡量动作的可替代性及最优性。
+    \begin{equation}
+        C_{\text{replace}}(a_i) = \hat{V}(z_t, A_t) - \max_{a' \in \mathcal{C}_{\text{cand}}} \hat{V}(z_t, (A_t \setminus \{a_i\}) \cup \{a'\})
+    \end{equation}
+    \item \textbf{Shapley Credit:} 衡量动作在协作中的平均边际贡献（采用蒙特卡洛近似）。
+    \begin{equation}
+        C_{\text{shapley}}(a_i) \approx \mathbb{E}_{S \subseteq A_t \setminus \{a_i\}} \left[ \hat{V}(S \cup \{a_i\}) - \hat{V}(S) \right]
+    \end{equation}
+\end{enumerate}
+这些信用值不仅用于更新调度策略 $\pi_\theta$ 的优势函数（Advantage Function），还作为后续结构进化的依据。
+
+\subsection{Action Space and Graph Evolution}
+
+为了适应任务分布漂移和工具失效，CWME 允许动作空间 $\mathcal{A}_t$ 和协作图 $G_t$ 随时间进化。
+
+\paragraph{Macro-Action Discovery.}
+系统定期挖掘具有高反事实信用的高频子轨迹。若序列 $\sigma = (a_i, ..., a_j)$ 在多个任务中 consistently 产生高 $C_{\text{shapley}}$ 且低不确定性，则将其压缩为一个新的宏动作 $m_{\text{new}} \in \mathcal{M}_t$。这有效降低了规划深度，将 $H$ 步规划压缩为 $H/k$ 步。
+
+\paragraph{Graph Mutation.}
+基于信用分析，系统执行离散的结构变异操作 $\mathcal{U}_t$：
+\begin{itemize}
+    \item \textbf{Pruning:} 若某边 $(v_i, v_j)$ 长期关联低信用动作，执行 $RemoveEdge(i, j)$。
+    \item \textbf{Split/Merge:} 若某节点 $v_i$ 负载过高且信用分散，执行 $SplitNode(i)$；若多个节点高度协同，执行 $MergeNodes$。
+    \item \textbf{Retirement:} 若某智能体节点长期贡献为负，执行 $RetireNode(i)$。
+\end{itemize}
+
+\paragraph{Selection Criteria.}
+结构变异接受与否基于帕累托前沿（Pareto Frontier）评估，综合考虑成功率、成本、延迟及信用一致性（Credit Fidelity），确保进化方向的多目标最优性。
+
+\subsection{Receding-Horizon Evolutionary Scheduler}
+
+调度器 $\pi_\theta$ 不再执行简单的贪婪选择，而是基于世界模型进行短视距规划。在每一步 $t$，调度器执行以下流程：
+\begin{enumerate}
+    \item \textbf{Candidate Generation:} 生成候选动作集合 $\mathcal{A}_{\text{cand}} \subseteq \mathcal{A}_t$。
+    \item \textbf{Imaginative Planning:} 对每个候选动作 $a \in \mathcal{A}_{\text{cand}}$，利用世界模型进行 $H$ 步 rollout，计算期望效用 $\mathbb{E}[\hat{V}]$ 及不确定性 $\hat{u}$。
+    \item \textbf{Risk-Aware Scoring:} 计算综合得分 $Score(a) = \mathbb{E}[\hat{V}] - \rho \cdot \hat{u}$，其中 $\rho$ 为风险厌恶系数。
+    \item \textbf{Credit Re-ranking:} 利用历史反事实信用对候选动作进行微调排序。
+    \item \textbf{Execution and Update:} 执行最优动作 $a^*$，收集真实数据用于世界模型校正。
+\end{enumerate}
+该过程可采用 Beam Search 或蒙特卡洛树搜索（MCTS）实现。为了平衡计算效率与规划质量，默认配置采用带不确定性惩罚的 Beam Search。
+
+\subsection{Training Algorithm}
+
+CWME 的训练是一个“真实执行 - 模型学习 - 进化”的闭环过程，如算法~\ref{alg:training} 所示。
+
+\begin{algorithm}[t]
+\caption{CWME Training Procedure}
+\label{alg:training}
+\begin{algorithmic}[1]
+\REQUIRE Initial scheduler $\pi_\theta$, world model $\mathcal{M}_\phi$, collaboration graph $G_0$
+\ENSURE Optimized policy $\pi_\theta^*$ and evolved graph $G^*$
+\STATE \textbf{Initialize} replay buffer $\mathcal{D} \leftarrow \emptyset$
+\FOR{iteration $k = 1, 2, \dots$}
+    \STATE \textbf{Collect Data:} Execute $N$ tasks using $\pi_\theta$ under $G_k$, collect trajectories $\mathcal{D}_{\text{real}}$
+    \STATE $\mathcal{D} \leftarrow \mathcal{D} \cup \mathcal{D}_{\text{real}}$
+    \STATE \textbf{Update World Model:} Minimize $\mathcal{L}_{\text{WM}}$ on $\mathcal{D}$ to update $\phi, \psi$
+    \STATE \textbf{Compute Credit:} For each action in $\mathcal{D}_{\text{real}}$, compute counterfactual credit $C(a)$ via $\mathcal{M}_\phi$ rollout
+    \STATE \textbf{Update Scheduler:} Update $\theta$ using $C(a)$ as advantage signal (Policy Gradient or BC)
+    \IF{evolution condition met}
+        \STATE \textbf{Evolve Structure:} Perform Macro Discovery and Graph Mutation
+        \STATE Update $G_k \to G_{k+1}$ and $\mathcal{A}_k \to \mathcal{A}_{k+1}$
+        \STATE \textbf{Model Correction:} Perform few-shot real rollout on $G_{k+1}$ to calibrate $\mathcal{M}_\phi$
+    \ENDIF
+\ENDFOR
+\STATE \RETURN $\pi_\theta, G_k$
+\end{algorithmic}
+\end{algorithm}
+
+该闭环确保了世界模型始终基于最新协作结构的数据进行训练，而调度策略则基于最准确的因果信用进行优化，从而实现系统的持续自适应进化。
