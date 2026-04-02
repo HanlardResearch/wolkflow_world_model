@@ -1,6 +1,6 @@
 # World Model 指标说明
 
-本文档说明 [train_workflow_world_model.py](./train_workflow_world_model.py) 在 `W&B` 和 `SwanLab` 中记录的指标含义。
+本文档说明 [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) 在 `W&B` 和 `SwanLab` 中记录的指标含义。
 
 两种平台记录的是同一套指标名。
 
@@ -10,7 +10,7 @@
 
 ## 世界模型架构图
 
-![世界模型架构图](./figs/世界模型架构-LLM.png)
+![世界模型架构图](puppeteer/figs/世界模型架构-LLM.png)
 
 ## 1. 指标命名规则
 
@@ -38,15 +38,15 @@
 指标的来源分成两层：
 
 - loss 定义：
-  - 在 [inference/policy/workflow_world_model.py](./inference/policy/workflow_world_model.py) line 675 到 [workflow_world_model.py](./inference/policy/workflow_world_model.py) line 725
+  - 在 [inference/policy/workflow_world_model.py](puppeteer/inference/policy/workflow_world_model.py) line 675 到 [workflow_world_model.py](puppeteer/inference/policy/workflow_world_model.py) line 725
 - 评估指标累计与聚合：
-  - 在 [train_workflow_world_model.py](./train_workflow_world_model.py) line 403 到 [train_workflow_world_model.py](./train_workflow_world_model.py) line 546
+  - 在 [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 403 到 [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 546
 - batch 级指标汇总入口：
-  - 在 [train_workflow_world_model.py](./train_workflow_world_model.py) line 467 到 [train_workflow_world_model.py](./train_workflow_world_model.py) line 507
+  - 在 [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 467 到 [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 507
 - epoch 级指标生成：
-  - 在 [train_workflow_world_model.py](./train_workflow_world_model.py) line 511 到 [train_workflow_world_model.py](./train_workflow_world_model.py) line 546
+  - 在 [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 511 到 [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 546
 - tracker 上报：
-  - 在 [train_workflow_world_model.py](./train_workflow_world_model.py) line 394 到 [train_workflow_world_model.py](./train_workflow_world_model.py) line 400 
+  - 在 [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 394 到 [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 400 
 ## 2. 总损失与分项损失
 
 这些指标直接来自模型训练时的 loss 计算。
@@ -61,10 +61,10 @@
 定义位置：
 
 - 总损失初始化和累加：
-  - [inference/policy/workflow_world_model.py](./inference/policy/workflow_world_model.py) line 670
-- [inference/policy/workflow_world_model.py](./inference/policy/workflow_world_model.py) line 684
-- [inference/policy/workflow_world_model.py](./inference/policy/workflow_world_model.py) line 692
-- [inference/policy/workflow_world_model.py](./inference/policy/workflow_world_model.py) line 725 
+  - [inference/policy/workflow_world_model.py](puppeteer/inference/policy/workflow_world_model.py) line 670
+- [inference/policy/workflow_world_model.py](puppeteer/inference/policy/workflow_world_model.py) line 684
+- [inference/policy/workflow_world_model.py](puppeteer/inference/policy/workflow_world_model.py) line 692
+- [inference/policy/workflow_world_model.py](puppeteer/inference/policy/workflow_world_model.py) line 725 
 ### `train/latent` / `val/latent`
 
 latent 对齐损失。
@@ -74,7 +74,7 @@ latent 对齐损失。
 
 定义位置：
 
-- [inference/policy/workflow_world_model.py](./inference/policy/workflow_world_model.py) line 677 
+- [inference/policy/workflow_world_model.py](puppeteer/inference/policy/workflow_world_model.py) line 677 
 ### `train/kl` / `val/kl`
 
 KL 散度损失。
@@ -85,9 +85,9 @@ KL 散度损失。
 定义位置：
 
 - KL 公式：
-  - [inference/policy/workflow_world_model.py](./inference/policy/workflow_world_model.py) line 61
+  - [inference/policy/workflow_world_model.py](puppeteer/inference/policy/workflow_world_model.py) line 61
 - KL 损失使用位置：
-  - [inference/policy/workflow_world_model.py](./inference/policy/workflow_world_model.py) line 678 
+  - [inference/policy/workflow_world_model.py](puppeteer/inference/policy/workflow_world_model.py) line 678 
 ### `train/reward` / `val/reward`
 
 reward 头的监督损失。
@@ -98,9 +98,9 @@ reward 头的监督损失。
 定义位置：
 
 - loss：
-  - [inference/policy/workflow_world_model.py](./inference/policy/workflow_world_model.py) line 691
+  - [inference/policy/workflow_world_model.py](puppeteer/inference/policy/workflow_world_model.py) line 691
 - 评估统计：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 483 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 483 
 ### `train/cost` / `val/cost`
 
 cost 头的监督损失。
@@ -112,9 +112,9 @@ cost 头的监督损失。
 定义位置：
 
 - loss：
-  - [inference/policy/workflow_world_model.py](./inference/policy/workflow_world_model.py) line 694
+  - [inference/policy/workflow_world_model.py](puppeteer/inference/policy/workflow_world_model.py) line 694
 - 评估统计：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 485 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 485 
 ### `train/done` / `val/done`
 
 done 头的监督损失。
@@ -125,9 +125,9 @@ done 头的监督损失。
 定义位置：
 
 - loss：
-  - [inference/policy/workflow_world_model.py](./inference/policy/workflow_world_model.py) line 697
+  - [inference/policy/workflow_world_model.py](puppeteer/inference/policy/workflow_world_model.py) line 697
 - 评估统计：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 491 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 491 
 ### `train/value` / `val/value`
 
 value 头的监督损失。
@@ -138,9 +138,9 @@ value 头的监督损失。
 定义位置：
 
 - loss：
-  - [inference/policy/workflow_world_model.py](./inference/policy/workflow_world_model.py) line 700
+  - [inference/policy/workflow_world_model.py](puppeteer/inference/policy/workflow_world_model.py) line 700
 - 评估统计：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 487 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 487 
 ### `train/uncertainty` / `val/uncertainty`
 
 uncertainty 头的监督损失。
@@ -151,9 +151,9 @@ uncertainty 头的监督损失。
 定义位置：
 
 - loss：
-  - [inference/policy/workflow_world_model.py](./inference/policy/workflow_world_model.py) line 703
+  - [inference/policy/workflow_world_model.py](puppeteer/inference/policy/workflow_world_model.py) line 703
 - 评估统计：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 489 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 489 
 ### `train/valid` / `val/valid`
 
 valid action 多标签损失。
@@ -164,9 +164,9 @@ valid action 多标签损失。
 定义位置：
 
 - loss：
-  - [inference/policy/workflow_world_model.py](./inference/policy/workflow_world_model.py) line 707
+  - [inference/policy/workflow_world_model.py](puppeteer/inference/policy/workflow_world_model.py) line 707
 - 评估统计：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 493 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 493 
 ### `train/aux` / `val/aux`
 
 辅助目标总损失。
@@ -182,9 +182,9 @@ valid action 多标签损失。
 定义位置：
 
 - loss：
-  - [inference/policy/workflow_world_model.py](./inference/policy/workflow_world_model.py) line 713
+  - [inference/policy/workflow_world_model.py](puppeteer/inference/policy/workflow_world_model.py) line 713
 - 评估统计：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 501 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 501 
 ### `train/counterfactual` / `val/counterfactual`
 
 反事实 credit 头损失。
@@ -199,13 +199,13 @@ valid action 多标签损失。
 定义位置：
 
 - Q 值定义：
-  - [inference/policy/workflow_world_model.py](./inference/policy/workflow_world_model.py) line 657
+  - [inference/policy/workflow_world_model.py](puppeteer/inference/policy/workflow_world_model.py) line 657
 - 排序损失公式：
-  - [inference/policy/workflow_world_model.py](./inference/policy/workflow_world_model.py) line 73
+  - [inference/policy/workflow_world_model.py](puppeteer/inference/policy/workflow_world_model.py) line 73
 - counterfactual loss：
-  - [inference/policy/workflow_world_model.py](./inference/policy/workflow_world_model.py) line 719
+  - [inference/policy/workflow_world_model.py](puppeteer/inference/policy/workflow_world_model.py) line 719
 - 评估统计：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 502 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 502 
 ## 3. 回归头误差指标
 
 以下指标适用于这些预测头：
@@ -233,7 +233,7 @@ valid action 多标签损失。
 定义位置：
 
 - MAE 聚合：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 523 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 523 
 ### `*_rmse`
 
 均方根误差。
@@ -249,7 +249,7 @@ valid action 多标签损失。
 定义位置：
 
 - RMSE 聚合：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 524 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 524 
 ### `*_pred_mean`
 
 预测值平均值。
@@ -265,7 +265,7 @@ valid action 多标签损失。
 定义位置：
 
 - `pred_mean` 聚合：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 521 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 521 
 ### `*_target_mean`
 
 目标值平均值。
@@ -281,7 +281,7 @@ valid action 多标签损失。
 定义位置：
 
 - `target_mean` 聚合：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 522 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 522 
 ## 4. Done 二分类指标
 
 这些指标对应 `done` 头。
@@ -295,9 +295,9 @@ done 分类准确率。
 定义位置：
 
 - 二分类指标累计：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 422
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 422
 - `done_acc` 聚合：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 529 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 529 
 ### `train/done_brier` / `val/done_brier`
 
 done 的 Brier Score。
@@ -309,7 +309,7 @@ done 的 Brier Score。
 定义位置：
 
 - Brier 聚合：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 530 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 530 
 ### `train/done_prob_mean` / `val/done_prob_mean`
 
 done 预测概率均值。
@@ -319,7 +319,7 @@ done 预测概率均值。
 定义位置：
 
 - `prob_mean` 聚合：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 528 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 528 
 ### `train/done_target_mean` / `val/done_target_mean`
 
 done 标签均值。
@@ -330,7 +330,7 @@ done 标签均值。
 定义位置：
 
 - `target_mean` 聚合：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 528 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 528 
 ## 5. Valid Action 多标签指标
 
 这些指标对应 `valid_action` 预测头。
@@ -345,10 +345,10 @@ done 标签均值。
 定义位置：
 
 - 多标签指标累计：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 442
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 442
 - F1 聚合：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 543
-- [train_workflow_world_model.py](./train_workflow_world_model.py) line 545 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 543
+- [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 545 
 ### `train/valid_precision` / `val/valid_precision`
 
 多标签精确率。
@@ -359,7 +359,7 @@ done 标签均值。
 定义位置：
 
 - precision 聚合：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 543 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 543 
 ### `train/valid_recall` / `val/valid_recall`
 
 多标签召回率。
@@ -370,7 +370,7 @@ done 标签均值。
 定义位置：
 
 - recall 聚合：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 544 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 544 
 ### `train/valid_label_acc` / `val/valid_label_acc`
 
 标签级准确率。
@@ -381,7 +381,7 @@ done 标签均值。
 定义位置：
 
 - `label_acc` 聚合：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 541 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 541 
 ### `train/valid_exact_match` / `val/valid_exact_match`
 
 样本级完全匹配率。
@@ -392,7 +392,7 @@ done 标签均值。
 定义位置：
 
 - `exact_match` 聚合：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 542 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 542 
 ### `train/valid_brier` / `val/valid_brier`
 
 多标签概率的 Brier Score。
@@ -403,7 +403,7 @@ done 标签均值。
 定义位置：
 
 - 多标签 Brier 聚合：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 546 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 546 
 ## 6. 辅助目标指标
 
 这些指标以 `aux_` 开头。
@@ -425,9 +425,9 @@ done 标签均值。
 定义位置：
 
 - 辅助头 loss：
-  - [inference/policy/workflow_world_model.py](./inference/policy/workflow_world_model.py) line 713
+  - [inference/policy/workflow_world_model.py](puppeteer/inference/policy/workflow_world_model.py) line 713
 - `aux_progress_score_mae` 统计入口：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 501 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 501 
 ### `train/aux_coverage_score_mae` / `val/aux_coverage_score_mae`
 
 覆盖度分数预测误差。
@@ -466,9 +466,9 @@ done 标签均值。
 定义位置：
 
 - 统计入口：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 502
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 502
 - MAE 聚合：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 523 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 523 
 ### `train/counterfactual_rmse` / `val/counterfactual_rmse`
 
 反事实 credit 预测的均方根误差。
@@ -476,7 +476,7 @@ done 标签均值。
 定义位置：
 
 - RMSE 聚合：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 524 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 524 
 ### `train/counterfactual_pred_mean` / `val/counterfactual_pred_mean`
 
 模型预测的反事实 credit 平均值。
@@ -484,7 +484,7 @@ done 标签均值。
 定义位置：
 
 - `pred_mean` 聚合：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 521 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 521 
 ### `train/counterfactual_target_mean` / `val/counterfactual_target_mean`
 
 真实反事实 credit 的平均值。
@@ -492,7 +492,7 @@ done 标签均值。
 定义位置：
 
 - `target_mean` 聚合：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 522 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 522 
 这些指标用于观察模型是否能学到“某个动作或 agent 对结果的边际贡献”。
 
 ## 8. `val/best_total`
@@ -505,9 +505,9 @@ done 标签均值。
 定义位置：
 
 - best 值写入 tracker：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 399
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 399
 - best 值更新逻辑：
-  - [train_workflow_world_model.py](./train_workflow_world_model.py) line 763 
+  - [train_workflow_world_model.py](puppeteer/train_workflow_world_model.py) line 763 
 这个指标通常用于：
 
 - 观察训练是否还在刷新最优结果

@@ -2,7 +2,7 @@
 
 
 训练脚本：
-[train_workflow_world_model.py](./train_workflow_world_model.py)
+[train_workflow_world_model.py](puppeteer/train_workflow_world_model.py)
 
 建议先进入 `puppeteer` 目录：
 
