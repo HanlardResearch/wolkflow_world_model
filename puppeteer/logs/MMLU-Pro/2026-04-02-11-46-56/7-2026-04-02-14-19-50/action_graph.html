@@ -1,0 +1,155 @@
+<html>
+    <head>
+        <meta charset="utf-8">
+        
+            <script src="lib/bindings/utils.js"></script>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/dist/vis-network.min.css" integrity="sha512-WgxfT5LWjfszlPHXRmBWHkV2eceiWTOBvrKCNbdgDYTHrT2AeLCGbF4sZlZw3UMN3WtL0tGUoIAKsu8mllg/XA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/vis-network.min.js" integrity="sha512-LnvoEWDFrqGHlHmDD2101OrLcbsfkrzoSpvtSQtxK3RMnRV0eOkhhBN2dXHKRrUU8p2DGRTk35n4O8nWSVe1mQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+            
+        
+<center>
+<h1></h1>
+</center>
+
+<!-- <link rel="stylesheet" href="../node_modules/vis/dist/vis.min.css" type="text/css" />
+<script type="text/javascript" src="../node_modules/vis/dist/vis.js"> </script>-->
+        <link
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/css/bootstrap.min.css"
+          rel="stylesheet"
+          integrity="sha384-eOJMYsd53ii+scO/bJGFsiCZc+5NDVN2yr8+0RDqr0Ql0h+rP48ckxlpbzKgwra6"
+          crossorigin="anonymous"
+        />
+        <script
+          src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/js/bootstrap.bundle.min.js"
+          integrity="sha384-JEW9xMcG8R+pH31jmWH6WWP0WintQrMb4s7ZOdauHnUtxwoG2vI5DkLtS3qm9Ekf"
+          crossorigin="anonymous"
+        ></script>
+
+
+        <center>
+          <h1></h1>
+        </center>
+        <style type="text/css">
+
+             #mynetwork {
+                 width: 100%;
+                 height: 750px;
+                 background-color: #FFFFFF;
+                 border: 1px solid lightgray;
+                 position: relative;
+                 float: left;
+             }
+
+             
+
+             
+
+             
+        </style>
+    </head>
+
+
+    <body>
+        <div class="card" style="width: 100%">
+            
+            
+            <div id="mynetwork" class="card-body"></div>
+        </div>
+
+        
+        
+
+        <script type="text/javascript">
+
+              // initialize global variables.
+              var edges;
+              var nodes;
+              var allNodes;
+              var allEdges;
+              var nodeColors;
+              var originalNodes;
+              var network;
+              var container;
+              var options, data;
+              var filter = {
+                  item : '',
+                  property : '',
+                  value : []
+              };
+
+              
+
+              
+
+              // This method is responsible for drawing the graph, returns the drawn network
+              function drawGraph() {
+                  var container = document.getElementById('mynetwork');
+
+                  
+
+                  // parsing and collecting nodes and edges from the python
+                  nodes = new vis.DataSet([{"color": "green", "font": {"color": "black"}, "id": "bfa29615-e146-4458-971c-656c7ed14d85", "label": "question\nQuestionAgent_gpt4o", "shape": "dot", "size": 10, "status": "Success"}, {"color": "green", "font": {"color": "black"}, "id": "f982993b-1b18-4ea7-8613-2fde0d404d7d", "label": "critique\nCriticAgent_gpt4o", "shape": "dot", "size": 10, "status": "Success"}, {"color": "green", "font": {"color": "black"}, "id": "a95676e1-6c9c-451a-b480-5cfeb7efd97a", "label": "search_tavily\nTavilyAgent", "shape": "dot", "size": 10, "status": "Success"}, {"color": "green", "font": {"color": "black"}, "id": "1cc0461a-2df9-4597-9335-8648639f7b18", "label": "reasoning\nReasoningAgent_gpt4o", "shape": "dot", "size": 10, "status": "Success"}, {"color": "green", "font": {"color": "black"}, "id": "fbd88104-8fbd-4807-bcaa-df62cf6673be", "label": "search_tavily\nTavilyAgent", "shape": "dot", "size": 10, "status": "Success"}, {"color": "green", "font": {"color": "black"}, "id": "2d574184-5786-45ab-8091-6e159a51943d", "label": "planning\nPlannerAgent_gpt4o", "shape": "dot", "size": 10, "status": "Success"}, {"color": "green", "font": {"color": "black"}, "id": "306b7334-2ec5-4a1a-b097-fb33aecb2254", "label": "reasoning\nReasoningAgent_gpt4o", "shape": "dot", "size": 10, "status": "Success"}, {"color": "green", "font": {"color": "black"}, "id": "63b823f4-0b77-4a8b-be63-6f1eabd0e2eb", "label": "terminate\nTerminatorAgent", "shape": "dot", "size": 10, "status": "Success"}, {"color": "green", "font": {"color": "black"}, "id": "3f73e6eb-0f2d-4f15-a478-5e57c8f759f5", "label": "terminate\nTerminatorAgent", "shape": "dot", "size": 10, "status": "Success"}, {"color": "green", "font": {"color": "black"}, "id": "0b1b5f0a-2f43-4aa4-815f-54f87cfde52c", "label": "planning\nPlannerAgent_gpt4o", "shape": "dot", "size": 10, "status": "Success"}, {"color": "green", "font": {"color": "black"}, "id": "3b3a1922-a637-4f56-9424-2e15b77cda4a", "label": "question\nQuestionAgent_gpt4o", "shape": "dot", "size": 10, "status": "Success"}, {"color": "green", "font": {"color": "black"}, "id": "bdbc793a-3341-4d32-831a-962a951d6df2", "label": "conclude\nConcluderAgent_gpt4o", "shape": "dot", "size": 10, "status": "Success"}, {"color": "green", "font": {"color": "black"}, "id": "2090d545-cc79-4e4a-baee-ced0d6db8067", "label": "terminate\nTerminatorAgent", "shape": "dot", "size": 10, "status": "Success"}, {"color": "green", "font": {"color": "black"}, "id": "ed1624a2-90b9-49da-81f9-3c0ea5792b3b", "label": "terminate\nTerminatorAgent", "shape": "dot", "size": 10, "status": "Success"}]);
+                  edges = new vis.DataSet([{"arrows": "to", "from": "bfa29615-e146-4458-971c-656c7ed14d85", "to": "f982993b-1b18-4ea7-8613-2fde0d404d7d", "width": 1}, {"arrows": "to", "from": "bfa29615-e146-4458-971c-656c7ed14d85", "to": "a95676e1-6c9c-451a-b480-5cfeb7efd97a", "width": 1}, {"arrows": "to", "from": "1cc0461a-2df9-4597-9335-8648639f7b18", "to": "fbd88104-8fbd-4807-bcaa-df62cf6673be", "width": 1}, {"arrows": "to", "from": "2d574184-5786-45ab-8091-6e159a51943d", "to": "306b7334-2ec5-4a1a-b097-fb33aecb2254", "width": 1}, {"arrows": "to", "from": "f982993b-1b18-4ea7-8613-2fde0d404d7d", "to": "63b823f4-0b77-4a8b-be63-6f1eabd0e2eb", "width": 1}, {"arrows": "to", "from": "fbd88104-8fbd-4807-bcaa-df62cf6673be", "to": "3f73e6eb-0f2d-4f15-a478-5e57c8f759f5", "width": 1}, {"arrows": "to", "from": "306b7334-2ec5-4a1a-b097-fb33aecb2254", "to": "0b1b5f0a-2f43-4aa4-815f-54f87cfde52c", "width": 1}, {"arrows": "to", "from": "a95676e1-6c9c-451a-b480-5cfeb7efd97a", "to": "3b3a1922-a637-4f56-9424-2e15b77cda4a", "width": 1}, {"arrows": "to", "from": "0b1b5f0a-2f43-4aa4-815f-54f87cfde52c", "to": "bdbc793a-3341-4d32-831a-962a951d6df2", "width": 1}, {"arrows": "to", "from": "3b3a1922-a637-4f56-9424-2e15b77cda4a", "to": "2090d545-cc79-4e4a-baee-ced0d6db8067", "width": 1}, {"arrows": "to", "from": "bdbc793a-3341-4d32-831a-962a951d6df2", "to": "ed1624a2-90b9-49da-81f9-3c0ea5792b3b", "width": 1}]);
+
+                  nodeColors = {};
+                  allNodes = nodes.get({ returnType: "Object" });
+                  for (nodeId in allNodes) {
+                    nodeColors[nodeId] = allNodes[nodeId].color;
+                  }
+                  allEdges = edges.get({ returnType: "Object" });
+                  // adding nodes and edges to the graph
+                  data = {nodes: nodes, edges: edges};
+
+                  var options = {
+    "configure": {
+        "enabled": false
+    },
+    "edges": {
+        "color": {
+            "inherit": true
+        },
+        "smooth": {
+            "enabled": true,
+            "type": "dynamic"
+        }
+    },
+    "interaction": {
+        "dragNodes": true,
+        "hideEdgesOnDrag": false,
+        "hideNodesOnDrag": false
+    },
+    "physics": {
+        "enabled": true,
+        "stabilization": {
+            "enabled": true,
+            "fit": true,
+            "iterations": 1000,
+            "onlyDynamicEdges": false,
+            "updateInterval": 50
+        }
+    }
+};
+
+                  
+
+
+                  
+
+                  network = new vis.Network(container, data, options);
+
+                  
+
+                  
+
+                  
+
+
+                  
+
+                  return network;
+
+              }
+              drawGraph();
+        </script>
+    </body>
+</html>

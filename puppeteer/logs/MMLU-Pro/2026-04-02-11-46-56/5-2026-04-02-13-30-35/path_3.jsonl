@@ -1,0 +1,47 @@
+[
+    {
+        "agent": "TavilyAgent",
+        "action": {
+            "action": "search_tavily",
+            "parameter": "key differences Islamic finance conventional finance prohibition interest gharar speculative tangible assets"
+        },
+        "cost": 3048150,
+        "tokens": 8709,
+        "model_size": 175,
+        "result": {
+            "step_data": "A Tavily search for 'key differences Islamic finance conventional finance prohibition interest gharar speculative tangible assets' found 5 results:\n\n## Web Results\n1. [4 Differences between Sharia and Conventional Financing](https://taf.co.id/en/article/differences-between-sharia-and-conventional-financing)\n### Understanding Sharia Financing\n\nIslamic or sharia financing is a type of financing based on Islamic Sharia principles. In this form of financing, all transactions must comply with Sharia law, which prohibits activities that are forbidden in the Qur'an and Hadith. One of the main principles in Islamic financing is the prohibition of riba or interest. Islamic financing also forbids speculation and any transactions involving uncertainty, known as gharar.\n\n### Understanding Conventional Financing\n\nOn the other hand, conventional financing operates based on the legal and regulatory framework generally applied in the banking world. This type of financing uses interest as compensation for loans provided to customers. The interest system is a key characteristic of conventional financing. [...] ### Differences Between Sharia and Conventional Financing\n\nThe differences between sharia and conventional financing institutions are fundamentally significant, in terms of basic principles, product mechanisms, risks, and penalty mechanisms. Understanding these differences is crucial for those who wish to choose the financing method that best suits their needs and values. Here are six key differences:\n\n### 1. Basic Principles\n\nThe distinction between Islamic and conventional financing can be observed in their basic principles. Islamic financing is based on Sharia principles that emphasize justice, transparency, and social welfare. One of its main principles is the prohibition of riba, which, in the context of financing, means the prohibition of charging or paying interest. [...] Although the OJK also oversees Islamic banks, the regulations applied to conventional financing differ in several aspects, particularly those related to the use of interest and penalties.\n\nIn conclusion, the explanation of the differences between Islamic and conventional financing highlights that choosing between the two depends on your needs, values, and preferences. Islamic financing offers a more just and transparent approach with risk and profit-sharing, as well as adherence to Sharia principles.\n\nConversely, conventional financing offers flexibility and convenience with fixed interest rates, but more risk is borne by the customer. Whatever your choice, it is important to fully understand the mechanisms, risks, and consequences of each type of financing.\n\n2. [How Islamic Finance Differs from Traditional Finance](https://blog.islamicly.com/halal-investing-guide/differences-between-traditional-and-islamic-finance/)\n## 4. Speculation and Uncertainty (Gharar)\n\nTraditional Finance:Speculative activities are often allowed and even encouraged in conventional markets. Derivatives, options, and futures trading are widespread, even though they may carry high levels of uncertainty or ambiguity.\n\nIslamic Finance:Shariah prohibits excessive uncertainty (Gharar) and speculative transactions. Financial instruments must have a clear purpose, value, and ownership. Speculative contracts and gambling-like behavior are forbidden.\n\n## 5. Asset-Backed Transactions\n\nTraditional Finance:While not all traditional finance instruments are asset-backed, many are based on intangible or derivative value. Leverage and synthetic instruments are common. [...] Islamic Finance:Islamic finance is based on Shariah (Islamic law), which emphasizes ethical, social, and moral dimensions of financial transactions. The system promotes risk-sharing, fairness, and socio-economic justice, with wealth viewed as a trust from God that must be used responsibly.\n\n## 2. Interest (Riba)\n\nTraditional Finance:Interest (riba) is a cornerstone of conventional financial systems. Whether in loans, savings, or investment vehicles, interest plays a pivotal role in determining returns and pricing risk.\n\nIslamic Finance:Islamic finance strictly prohibits interest in any form. Earning money from money is considered exploitative. Instead, Shariah compliant finance relies on profit and loss sharing arrangements, trade-based contracts, or asset-backed financing. [...] ## Conclusion\n\nIslamic finance offers an ethical alternative to conventional financial systems, emphasizing fairness, shared responsibility, and tangible economic activity. While both systems have their strengths and challenges, understanding their differences is key for investors, institutions, and policymakers looking to engage with diverse financial markets.\n\nAs Islamic finance continues to grow – projected to reach $4 trillion in assets globally by 2027 – its influence on global finance will likely expand, offering a complementary model grounded in faith, ethics, and inclusivity.\n\n(Visited 452 times, 1 visits today)\n\n### Share this:\n\n Twe",
+            "answer": "G"
+        },
+        "success": "Success"
+    },
+    {
+        "agent": "ReasoningAgent_gpt4o",
+        "action": {
+            "action": "reasoning",
+            "parameter": ""
+        },
+        "cost": 6321200,
+        "tokens": 15803,
+        "model_size": 200,
+        "result": {
+            "step_data": "\n\nREASONING RESULT: Based on the search results provided, we can determine the correct terms for the blanks by analyzing the core principles of Islamic finance.\n1.  **Prohibition of Interest:** The search results explicitly state that Islamic financing prohibits \"riba,\" which is defined as the prohibition of charging or paying **Interest**. This eliminates options F and I (which suggest Profit) and confirms the first blank is \"Interest\".\n2.  **Prohibition of Uncertainty and Speculation:** The results mention that Islamic finance forbids \"speculation and any transactions involving uncertainty, known as gharar\" and \"prohibits excessive uncertainty (Gharar) and speculative transactions.\" Therefore, the blanks for transactions should be filled with **Uncertain** and **Speculative**. This eliminates options using \"Certain\" or \"Assured\" (A, B, D, E, H, J). This leaves options C and G.\n3.  **Asset Backing:** The search results contrast Islamic finance with conventional finance, noting that conventional finance often uses \"intangible or derivative value,\" whereas Islamic finance relies on \"asset-backed financing.\" In Islamic finance, to avoid Gharar, transactions must be linked to real economic activity, implying backing by **Tangible assets** rather than just intangible ones. Option C suggests \"Intangible assets,\" while Option G suggests \"Tangible assets.\"\n4.  **Conclusion:** Combining these findings (Interest, Uncertain, Speculative, Tangible assets), Option G is the only choice that accurately reflects the key differences described in the search results.\n\nFINAL ANSWER: G",
+            "answer": "G"
+        },
+        "success": "Success"
+    },
+    {
+        "agent": "TerminatorAgent",
+        "action": {
+            "action": "terminate",
+            "parameter": ""
+        },
+        "cost": 0,
+        "tokens": 0,
+        "model_size": 175,
+        "result": {
+            "step_data": null,
+            "answer": null
+        },
+        "success": "Success"
+    }
+]
