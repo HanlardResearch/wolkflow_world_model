@@ -1,9 +1,11 @@
 ﻿# -*- coding: utf-8 -*-
 import argparse
+import json
 import math
 import os
 import random
 import sys
+from collections import Counter
 from dataclasses import replace
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -55,6 +57,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--val-ratio", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--gradient-clip", type=float, default=1.0)
+    parser.add_argument(
+        "--kl-max-per-sample",
+        type=float,
+        default=5.0,
+        help="Clip per-sample KL after optional latent-dimension normalization; <=0 disables clipping.",
+    )
+    parser.add_argument(
+        "--disable-latent-target-eval",
+        action="store_true",
+        help="Compute next-state posterior targets in training mode instead of deterministic eval mode.",
+    )
+    parser.add_argument(
+        "--disable-kl-dim-normalization",
+        action="store_true",
+        help="Optimize KL as a sum over latent dimensions instead of a per-dimension average.",
+    )
     parser.add_argument("--use-llm-text-encoder", action="store_true", help="Use a HuggingFace LLM to encode task/evidence text.")
     parser.add_argument(
         "--text-encoder-model-path",
@@ -148,6 +166,348 @@ def load_records(paths: Sequence[str], max_records: int) -> List[Dict]:
     return records
 
 
+def _safe_float(value: object, default: float = 0.0) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    return number if math.isfinite(number) else default
+
+
+def _normalize_cost(value: object, clip: float = 1.0e8) -> float:
+    raw = max(_safe_float(value, 0.0), 0.0)
+    return min(math.log1p(raw) / math.log1p(clip), 1.0)
+
+
+def _sequence_length(value: object) -> int:
+    if isinstance(value, (list, tuple, set)):
+        return len(value)
+    return 0
+
+
+def _summarize_numeric(values: Sequence[float]) -> Dict[str, float]:
+    if not values:
+        return {"count": 0.0, "mean": 0.0, "std": 0.0, "min": 0.0, "max": 0.0}
+    count = float(len(values))
+    mean = sum(values) / count
+    variance = sum((value - mean) ** 2 for value in values) / count
+    return {
+        "count": count,
+        "mean": mean,
+        "std": math.sqrt(variance),
+        "min": min(values),
+        "max": max(values),
+    }
+
+
+def _top_counts(counter: Counter, limit: int = 8) -> List[Dict[str, object]]:
+    return [{"name": name, "count": count} for name, count in counter.most_common(limit)]
+
+
+def summarize_split_records(split_name: str, records: Sequence[Dict], files: Sequence[str]) -> Dict[str, object]:
+    episode_lengths: Dict[str, int] = {}
+    action_counts: Counter = Counter()
+    workflow_state_counts: Counter = Counter()
+    task_type_counts: Counter = Counter()
+    reward_values: List[float] = []
+    value_values: List[float] = []
+    cost_raw_values: List[float] = []
+    cost_target_values: List[float] = []
+    uncertainty_values: List[float] = []
+    done_values: List[float] = []
+    valid_action_counts: List[float] = []
+    executed_step_counts: List[float] = []
+    evidence_counts: List[float] = []
+    graph_node_counts: List[float] = []
+    next_state_present = 0.0
+    next_graph_present = 0.0
+    returns_present = 0.0
+    next_targets_present = 0.0
+
+    for record in records:
+        episode_id = str(record.get("episode_id", "unknown"))
+        episode_lengths[episode_id] = episode_lengths.get(episode_id, 0) + 1
+
+        action = record.get("action", {})
+        action_name = str(action.get("name", "unknown")).strip() or "unknown"
+        action_counts[action_name] += 1
+
+        task = record.get("task", {})
+        task_type = str(task.get("task_type", task.get("type", "unknown"))).strip() or "unknown"
+        task_type_counts[task_type] += 1
+
+        state = record.get("state", {})
+        workflow_state = str(state.get("workflow_state", state.get("state", "unknown"))).strip() or "unknown"
+        workflow_state_counts[workflow_state] += 1
+
+        outcome = record.get("outcome", {})
+        next_state_targets = record.get("next_state_targets", {})
+        returns = record.get("returns", {})
+
+        reward = _safe_float(outcome.get("reward", 0.0))
+        reward_values.append(reward)
+        value_values.append(_safe_float(returns.get("mc_return", reward)))
+        raw_cost = max(_safe_float(outcome.get("cost_delta", 0.0)), 0.0)
+        cost_raw_values.append(raw_cost)
+        cost_target_values.append(_normalize_cost(raw_cost))
+        uncertainty_values.append(_safe_float(next_state_targets.get("conflict_score", 0.0)))
+        done_values.append(1.0 if bool(outcome.get("done", False)) else 0.0)
+
+        valid_actions = next_state_targets.get("valid_action_mask", state.get("valid_actions", []))
+        valid_action_counts.append(float(_sequence_length(valid_actions)))
+        executed_step_counts.append(float(_sequence_length(state.get("executed_steps", []))))
+        evidence_counts.append(
+            float(
+                _sequence_length(state.get("reasoning_results", []))
+                + _sequence_length(state.get("tool_results", []))
+                + _sequence_length(state.get("recent_answers", []))
+            )
+        )
+        graph_node_counts.append(float(_sequence_length(record.get("graph", {}).get("nodes", []))))
+
+        if isinstance(record.get("next_state"), dict) and bool(record.get("next_state")):
+            next_state_present += 1.0
+        if isinstance(record.get("next_graph"), dict) and bool(record.get("next_graph")):
+            next_graph_present += 1.0
+        if isinstance(returns, dict) and bool(returns):
+            returns_present += 1.0
+        if isinstance(next_state_targets, dict) and bool(next_state_targets):
+            next_targets_present += 1.0
+
+    record_count = len(records)
+    denom = float(record_count) if record_count > 0 else 1.0
+    episode_stats = _summarize_numeric(list(episode_lengths.values()))
+    return {
+        "split": split_name,
+        "file_count": len(files),
+        "record_count": record_count,
+        "episode_count": len(episode_lengths),
+        "episode_length": episode_stats,
+        "reward": _summarize_numeric(reward_values),
+        "value": _summarize_numeric(value_values),
+        "cost_delta_raw": _summarize_numeric(cost_raw_values),
+        "cost_target": _summarize_numeric(cost_target_values),
+        "uncertainty": _summarize_numeric(uncertainty_values),
+        "done_rate": sum(done_values) / denom,
+        "valid_action_count": _summarize_numeric(valid_action_counts),
+        "executed_step_count": _summarize_numeric(executed_step_counts),
+        "evidence_count": _summarize_numeric(evidence_counts),
+        "graph_node_count": _summarize_numeric(graph_node_counts),
+        "next_state_present_rate": next_state_present / denom,
+        "next_graph_present_rate": next_graph_present / denom,
+        "returns_present_rate": returns_present / denom,
+        "next_targets_present_rate": next_targets_present / denom,
+        "unique_action_count": len(action_counts),
+        "unique_workflow_state_count": len(workflow_state_counts),
+        "unique_task_type_count": len(task_type_counts),
+        "action_vocab": sorted(action_counts.keys()),
+        "workflow_state_vocab": sorted(workflow_state_counts.keys()),
+        "task_type_vocab": sorted(task_type_counts.keys()),
+        "top_actions": _top_counts(action_counts),
+        "top_workflow_states": _top_counts(workflow_state_counts),
+        "top_task_types": _top_counts(task_type_counts),
+    }
+
+
+def build_dataset_report(
+    train_records: Sequence[Dict],
+    val_records: Sequence[Dict],
+    train_files: Sequence[str],
+    val_files: Sequence[str],
+) -> Dict[str, object]:
+    train_summary = summarize_split_records("train", train_records, train_files)
+    val_summary = summarize_split_records("val", val_records, val_files)
+
+    train_actions = set(train_summary["action_vocab"])
+    val_actions = set(val_summary["action_vocab"])
+    unseen_val_actions = sorted(val_actions - train_actions)
+    shared_actions = sorted(train_actions & val_actions)
+    val_action_coverage = len(shared_actions) / max(len(val_actions), 1)
+
+    comparison = {
+        "reward_mean_gap": val_summary["reward"]["mean"] - train_summary["reward"]["mean"],
+        "value_mean_gap": val_summary["value"]["mean"] - train_summary["value"]["mean"],
+        "cost_target_mean_gap": val_summary["cost_target"]["mean"] - train_summary["cost_target"]["mean"],
+        "uncertainty_mean_gap": val_summary["uncertainty"]["mean"] - train_summary["uncertainty"]["mean"],
+        "done_rate_gap": val_summary["done_rate"] - train_summary["done_rate"],
+        "valid_action_count_gap": val_summary["valid_action_count"]["mean"] - train_summary["valid_action_count"]["mean"],
+        "val_action_coverage": val_action_coverage,
+        "shared_action_count": len(shared_actions),
+        "unseen_val_actions": unseen_val_actions,
+    }
+
+    warnings: List[str] = []
+    if train_summary["record_count"] < 100:
+        warnings.append(f"Training split is very small: {train_summary['record_count']} records.")
+    if train_summary["episode_count"] < 10:
+        warnings.append(f"Training split has only {train_summary['episode_count']} episodes.")
+    if val_summary["record_count"] and val_summary["episode_count"] < 5:
+        warnings.append(f"Validation split has only {val_summary['episode_count']} episodes.")
+    if abs(comparison["reward_mean_gap"]) > 0.25:
+        warnings.append(
+            "Reward distribution differs noticeably between train and val "
+            f"(gap={comparison['reward_mean_gap']:.4f})."
+        )
+    if abs(comparison["value_mean_gap"]) > 0.25:
+        warnings.append(
+            "Value distribution differs noticeably between train and val "
+            f"(gap={comparison['value_mean_gap']:.4f})."
+        )
+    if abs(comparison["uncertainty_mean_gap"]) > 0.05:
+        warnings.append(
+            "Uncertainty/conflict targets differ noticeably between train and val "
+            f"(gap={comparison['uncertainty_mean_gap']:.4f})."
+        )
+    if abs(comparison["done_rate_gap"]) > 0.15:
+        warnings.append(f"Done rate differs noticeably between train and val (gap={comparison['done_rate_gap']:.4f}).")
+    if unseen_val_actions:
+        warnings.append(
+            "Validation includes actions not seen in training: " + ", ".join(unseen_val_actions[:8])
+        )
+    comparison["warnings"] = warnings
+
+    return {
+        "overview": {
+            "train_file_count": len(train_files),
+            "val_file_count": len(val_files),
+            "train_record_count": len(train_records),
+            "val_record_count": len(val_records),
+        },
+        "splits": {
+            "train": train_summary,
+            "val": val_summary,
+        },
+        "comparison": comparison,
+    }
+
+
+def _format_report_value(value: float) -> str:
+    return f"{value:.4f}" if math.isfinite(value) else "nan"
+
+
+def render_dataset_report_markdown(report: Dict[str, object]) -> str:
+    overview = report["overview"]
+    comparison = report["comparison"]
+    lines = [
+        "# Dataset Split Report",
+        "",
+        "## Overview",
+        "",
+        f"- Train files: {overview['train_file_count']}",
+        f"- Validation files: {overview['val_file_count']}",
+        f"- Train records: {overview['train_record_count']}",
+        f"- Validation records: {overview['val_record_count']}",
+        "",
+    ]
+    for split_name in ("train", "val"):
+        summary = report["splits"][split_name]
+        reward = summary["reward"]
+        value = summary["value"]
+        uncertainty = summary["uncertainty"]
+        valid_actions = summary["valid_action_count"]
+        episode_length = summary["episode_length"]
+        lines.extend(
+            [
+                f"## {split_name.title()}",
+                "",
+                f"- Episodes: {summary['episode_count']}",
+                (
+                    "- Episode length mean/std/min/max: "
+                    f"{_format_report_value(episode_length['mean'])} / "
+                    f"{_format_report_value(episode_length['std'])} / "
+                    f"{_format_report_value(episode_length['min'])} / "
+                    f"{_format_report_value(episode_length['max'])}"
+                ),
+                (
+                    "- Reward mean/std/min/max: "
+                    f"{_format_report_value(reward['mean'])} / "
+                    f"{_format_report_value(reward['std'])} / "
+                    f"{_format_report_value(reward['min'])} / "
+                    f"{_format_report_value(reward['max'])}"
+                ),
+                (
+                    "- Value mean/std/min/max: "
+                    f"{_format_report_value(value['mean'])} / "
+                    f"{_format_report_value(value['std'])} / "
+                    f"{_format_report_value(value['min'])} / "
+                    f"{_format_report_value(value['max'])}"
+                ),
+                (
+                    "- Uncertainty mean/std: "
+                    f"{_format_report_value(uncertainty['mean'])} / "
+                    f"{_format_report_value(uncertainty['std'])}"
+                ),
+                (
+                    "- Valid action count mean/std: "
+                    f"{_format_report_value(valid_actions['mean'])} / "
+                    f"{_format_report_value(valid_actions['std'])}"
+                ),
+                f"- Done rate: {_format_report_value(summary['done_rate'])}",
+                f"- Next-state present rate: {_format_report_value(summary['next_state_present_rate'])}",
+                f"- Next-graph present rate: {_format_report_value(summary['next_graph_present_rate'])}",
+                f"- Returns present rate: {_format_report_value(summary['returns_present_rate'])}",
+                f"- Next-targets present rate: {_format_report_value(summary['next_targets_present_rate'])}",
+                "- Top actions: "
+                + ", ".join(f"{item['name']}({item['count']})" for item in summary["top_actions"]),
+                "",
+            ]
+        )
+
+    lines.extend(
+        [
+            "## Comparison",
+            "",
+            f"- Reward mean gap (val-train): {_format_report_value(comparison['reward_mean_gap'])}",
+            f"- Value mean gap (val-train): {_format_report_value(comparison['value_mean_gap'])}",
+            f"- Cost target mean gap (val-train): {_format_report_value(comparison['cost_target_mean_gap'])}",
+            f"- Uncertainty mean gap (val-train): {_format_report_value(comparison['uncertainty_mean_gap'])}",
+            f"- Done rate gap (val-train): {_format_report_value(comparison['done_rate_gap'])}",
+            f"- Validation action coverage by training action vocab: {_format_report_value(comparison['val_action_coverage'])}",
+            "",
+            "## Warnings",
+            "",
+        ]
+    )
+    warnings = comparison["warnings"] or ["No heuristic issues detected."]
+    lines.extend(f"- {warning}" for warning in warnings)
+    lines.append("")
+    return "\n".join(lines)
+
+
+def write_dataset_report(output_dir: str, report: Dict[str, object]) -> Dict[str, str]:
+    os.makedirs(output_dir, exist_ok=True)
+    json_path = os.path.join(output_dir, "dataset_report.json")
+    md_path = os.path.join(output_dir, "dataset_report.md")
+    with open(json_path, "w", encoding="utf-8") as handle:
+        json.dump(report, handle, ensure_ascii=False, indent=2)
+    with open(md_path, "w", encoding="utf-8") as handle:
+        handle.write(render_dataset_report_markdown(report))
+    return {"json": json_path, "markdown": md_path}
+
+
+def print_dataset_report_summary(report: Dict[str, object], report_paths: Dict[str, str]) -> None:
+    overview = report["overview"]
+    comparison = report["comparison"]
+    print(
+        "[Data] "
+        f"train_records={overview['train_record_count']} "
+        f"val_records={overview['val_record_count']} "
+        f"train_files={overview['train_file_count']} "
+        f"val_files={overview['val_file_count']}"
+    )
+    print(
+        "[Data] "
+        f"reward_gap={comparison['reward_mean_gap']:.4f} "
+        f"value_gap={comparison['value_mean_gap']:.4f} "
+        f"uncertainty_gap={comparison['uncertainty_mean_gap']:.4f} "
+        f"action_coverage={comparison['val_action_coverage']:.4f}"
+    )
+    for warning in comparison["warnings"]:
+        print(f"[Data Warning] {warning}")
+    print(f"[Data] report_json={report_paths['json']}")
+    print(f"[Data] report_markdown={report_paths['markdown']}")
+
+
 def collect_vocab(records: Sequence[Dict]) -> Tuple[List[str], List[str]]:
     # 从图结构、动作记录和状态字段中收集角色与动作词表。
     roles = set()
@@ -226,6 +586,9 @@ def build_adapter_config(args: argparse.Namespace) -> WorkflowWorldModelConfig:
     config.text_encoder_dtype = str(args.text_encoder_dtype)
     config.task_text_max_length = int(args.task_text_max_length)
     config.evidence_text_max_length = int(args.evidence_text_max_length)
+    config.stable_next_posterior_targets = not bool(args.disable_latent_target_eval)
+    config.normalize_kl_by_latent_dim = not bool(args.disable_kl_dim_normalization)
+    config.max_kl_per_sample = float(args.kl_max_per_sample)
     return config
 
 
@@ -261,6 +624,9 @@ def _build_tracker_config(
         "val_ratio": args.val_ratio,
         "seed": args.seed,
         "gradient_clip": args.gradient_clip,
+        "kl_max_per_sample": args.kl_max_per_sample,
+        "disable_latent_target_eval": args.disable_latent_target_eval,
+        "disable_kl_dim_normalization": args.disable_kl_dim_normalization,
         "use_llm_text_encoder": args.use_llm_text_encoder,
         "text_encoder_model_path": args.text_encoder_model_path,
         "text_encoder_trainable": args.text_encoder_trainable,
@@ -294,6 +660,9 @@ def _build_tracker_config(
             "text_encoder_dtype": model_config.text_encoder_dtype,
             "task_text_max_length": model_config.task_text_max_length,
             "evidence_text_max_length": model_config.evidence_text_max_length,
+            "stable_next_posterior_targets": model_config.stable_next_posterior_targets,
+            "normalize_kl_by_latent_dim": model_config.normalize_kl_by_latent_dim,
+            "max_kl_per_sample": model_config.max_kl_per_sample,
             "aux_names": list(model_config.aux_names),
             "loss_weights": dict(model_config.loss_weights),
         },
@@ -302,7 +671,7 @@ def _build_tracker_config(
 
 def resolve_dataset_splits(
     args: argparse.Namespace,
-) -> Tuple[List[str], List[str], List[Dict], List[Dict], List[Dict]]:
+) -> Tuple[List[str], List[str], List[str], List[Dict], List[Dict]]:
     train_root = str(args.train_data_root or "").strip()
     test_root = str(args.test_data_root or "").strip()
 
@@ -763,6 +1132,9 @@ def main() -> None:
 
     dataset_files, train_files, val_files, train_records, val_records = resolve_dataset_splits(args)
     records = train_records + val_records
+    dataset_report = build_dataset_report(train_records, val_records, train_files, val_files)
+    report_paths = write_dataset_report(args.output_dir, dataset_report)
+    print_dataset_report_summary(dataset_report, report_paths)
     next_records = build_next_state_records(records)
     roles, actions = collect_vocab(records)
     adapter = WorkflowStateAdapter(
@@ -831,6 +1203,8 @@ def main() -> None:
     if train_files and val_files:
         print(f"Train files: {len(train_files)} | Eval files: {len(val_files)}")
     print(f"Train records: {len(train_records)} | Validation records: {len(val_records)}")
+    print(f"Dataset report JSON: {report_paths['json']}")
+    print(f"Dataset report Markdown: {report_paths['markdown']}")
     if best_path:
         print(f"Best checkpoint saved to: {best_path}")
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import inspect
 import math
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -251,6 +251,9 @@ class WorkflowWorldModelConfig:
     evidence_text_max_length: int = 128
     aux_names: Tuple[str, ...] = field(default_factory=_default_aux_names)
     loss_weights: Dict[str, float] = field(default_factory=_default_loss_weights)
+    stable_next_posterior_targets: bool = True
+    normalize_kl_by_latent_dim: bool = True
+    max_kl_per_sample: float = 5.0
 
 
 @dataclass
@@ -594,6 +597,35 @@ class WorkflowWorldModel(nn.Module):
             return mean
         return mean + torch.randn_like(mean) * torch.exp(0.5 * logvar)
 
+    @contextmanager
+    def _temporary_eval_mode(self, enabled: bool):
+        if not enabled:
+            yield
+            return
+        was_training = self.training
+        if was_training:
+            self.eval()
+        try:
+            yield
+        finally:
+            if was_training:
+                self.train(was_training)
+
+    def _encode_transition_target(self, batch: WorkflowWorldModelBatch) -> Tuple[Tensor, Tensor]:
+        # Use deterministic posterior targets so the prior does not chase dropout noise.
+        with torch.no_grad():
+            with self._temporary_eval_mode(self.config.stable_next_posterior_targets):
+                _, next_mean, next_logvar, _, _ = self.encode_observation(batch, sample_latent=False)
+        return next_mean.detach(), next_logvar.detach()
+
+    def _reduce_kl_loss(self, kl_values: Tensor) -> Tensor:
+        if self.config.normalize_kl_by_latent_dim and self.config.latent_dim > 0:
+            kl_values = kl_values / float(self.config.latent_dim)
+        max_kl = float(self.config.max_kl_per_sample)
+        if max_kl > 0:
+            kl_values = kl_values.clamp(max=max_kl)
+        return kl_values.mean()
+
     def encode_action(self, kind_ids: Tensor, name_ids: Tensor, features: Tensor) -> Tensor:
         # 动作编码包含动作类型、动作名和少量数值特征。
         kind_repr = self.action_kind_embedding(kind_ids)
@@ -791,15 +823,16 @@ class WorkflowWorldModel(nn.Module):
         weights = self.config.loss_weights
 
         if next_batch is not None:
-            # next_batch 提供真实的 s_{t+1} 编码结果，用来监督 prior。
-            _, next_mean, next_logvar, _, _ = self.encode_observation(next_batch, sample_latent=False)
-            losses["latent"] = F.smooth_l1_loss(output.prior_mean, next_mean.detach())
-            losses["kl"] = _gaussian_kl(
-                next_mean.detach(),
-                next_logvar.detach(),
-                output.prior_mean,
-                output.prior_logvar,
-            ).mean()
+            next_mean, next_logvar = self._encode_transition_target(next_batch)
+            losses["latent"] = F.smooth_l1_loss(output.prior_mean, next_mean)
+            losses["kl"] = self._reduce_kl_loss(
+                _gaussian_kl(
+                    next_mean,
+                    next_logvar,
+                    output.prior_mean,
+                    output.prior_logvar,
+                )
+            )
             losses["total"] = losses["total"] + weights["latent"] * losses["latent"] + weights["kl"] * losses["kl"]
 
         targets = batch.targets
