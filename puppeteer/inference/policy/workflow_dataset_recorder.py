@@ -112,7 +112,7 @@ class WorkflowDatasetRecorder:
             return []
 
         workflow_actions = list(getattr(getattr(global_info, "workflow", None), "workflow", []))
-        returns = self._calculate_returns(trajectory, gamma)
+        raw_returns = self._calculate_returns(trajectory, gamma)
         episode_id = self._build_episode_id(global_info, path_id)
         metrics = dict(transition.get("metrics", {}))
         records: List[Dict[str, Any]] = []
@@ -179,19 +179,39 @@ class WorkflowDatasetRecorder:
                     done=done,
                 ),
                 "outcome": {
-                    "reward": self._to_float(trajectory_step.get("reward", 0.0)),
+                    "reward": self._step_world_model_target(
+                        trajectory_step,
+                        "world_model_reward",
+                        trajectory_step.get("reward", 0.0),
+                    ),
                     "cost_delta": self._to_float(action.cost),
                     "token_delta": self._to_float(action.tokens),
                     "done": done,
                     "success": self._normalize_success(action.success),
                 },
                 "returns": {
-                    "mc_return": returns[step_index],
-                    "h2_return": self._discounted_window_return(trajectory, step_index, horizon=2, gamma=gamma),
+                    "mc_return": self._step_world_model_target(
+                        trajectory_step,
+                        "world_model_mc_return",
+                        raw_returns[step_index],
+                    ),
+                    "h2_return": self._step_world_model_target(
+                        trajectory_step,
+                        "world_model_h2_return",
+                        self._discounted_window_return(trajectory, step_index, horizon=2, gamma=gamma),
+                    ),
                 },
                 "credit_targets": {
-                    "leave_one_out_gap": returns[step_index],
-                    "step_credit": self._to_float(trajectory_step.get("reward", 0.0)),
+                    "leave_one_out_gap": self._step_world_model_target(
+                        trajectory_step,
+                        "world_model_leave_one_out_gap",
+                        raw_returns[step_index],
+                    ),
+                    "step_credit": self._step_world_model_target(
+                        trajectory_step,
+                        "world_model_step_credit",
+                        trajectory_step.get("reward", 0.0),
+                    ),
                 },
                 "metadata": {
                     "agent_role": action.agent_role,
@@ -199,6 +219,27 @@ class WorkflowDatasetRecorder:
                     "action_parameter": self._summarize_text(action.action.get("parameter"), limit=120),
                     "result_summary": self._summarize_text(action.result.get("step_data"), limit=240),
                     "answer_summary": self._summarize_text(action.result.get("answer"), limit=160),
+                    "tree_parent_value": self._step_world_model_target(
+                        trajectory_step,
+                        "world_model_parent_value",
+                        None,
+                    ),
+                    "tree_action_value": self._step_world_model_target(
+                        trajectory_step,
+                        "world_model_action_value",
+                        None,
+                    ),
+                    "tree_sibling_baseline": self._step_world_model_target(
+                        trajectory_step,
+                        "world_model_sibling_baseline",
+                        None,
+                    ),
+                    "tree_descendant_leaves": int(trajectory_step.get("world_model_descendant_leaves", 0) or 0),
+                    "tree_leaf_reward": self._step_world_model_target(
+                        trajectory_step,
+                        "world_model_leaf_reward",
+                        None,
+                    ),
                     "metrics": metrics,
                 },
             }
@@ -240,21 +281,65 @@ class WorkflowDatasetRecorder:
                     },
                     "next_state_targets": self._build_next_state_targets(workflow_actions, done=True),
                     "outcome": {
-                        "reward": self._to_float(terminal_step.get("reward", 0.0)),
+                        "reward": self._step_world_model_target(
+                            terminal_step,
+                            "world_model_reward",
+                            terminal_step.get("reward", 0.0),
+                        ),
                         "cost_delta": 0.0,
                         "token_delta": 0.0,
                         "done": True,
                         "success": True,
                     },
                     "returns": {
-                        "mc_return": returns[-1] if returns else self._to_float(terminal_step.get("reward", 0.0)),
-                        "h2_return": returns[-1] if returns else self._to_float(terminal_step.get("reward", 0.0)),
+                        "mc_return": self._step_world_model_target(
+                            terminal_step,
+                            "world_model_mc_return",
+                            raw_returns[-1] if raw_returns else terminal_step.get("reward", 0.0),
+                        ),
+                        "h2_return": self._step_world_model_target(
+                            terminal_step,
+                            "world_model_h2_return",
+                            raw_returns[-1] if raw_returns else terminal_step.get("reward", 0.0),
+                        ),
                     },
                     "credit_targets": {
-                        "leave_one_out_gap": returns[-1] if returns else self._to_float(terminal_step.get("reward", 0.0)),
-                        "step_credit": self._to_float(terminal_step.get("reward", 0.0)),
+                        "leave_one_out_gap": self._step_world_model_target(
+                            terminal_step,
+                            "world_model_leave_one_out_gap",
+                            raw_returns[-1] if raw_returns else terminal_step.get("reward", 0.0),
+                        ),
+                        "step_credit": self._step_world_model_target(
+                            terminal_step,
+                            "world_model_step_credit",
+                            terminal_step.get("reward", 0.0),
+                        ),
                     },
-                    "metadata": {"agent_role": "TerminatorAgent", "metrics": metrics},
+                    "metadata": {
+                        "agent_role": "TerminatorAgent",
+                        "tree_parent_value": self._step_world_model_target(
+                            terminal_step,
+                            "world_model_parent_value",
+                            None,
+                        ),
+                        "tree_action_value": self._step_world_model_target(
+                            terminal_step,
+                            "world_model_action_value",
+                            None,
+                        ),
+                        "tree_sibling_baseline": self._step_world_model_target(
+                            terminal_step,
+                            "world_model_sibling_baseline",
+                            None,
+                        ),
+                        "tree_descendant_leaves": int(terminal_step.get("world_model_descendant_leaves", 0) or 0),
+                        "tree_leaf_reward": self._step_world_model_target(
+                            terminal_step,
+                            "world_model_leaf_reward",
+                            None,
+                        ),
+                        "metrics": metrics,
+                    },
                 }
             )
 
@@ -288,6 +373,13 @@ class WorkflowDatasetRecorder:
                 break
             total += (gamma**offset) * self._to_float(trajectory[index].get("reward", 0.0))
         return total
+
+    def _step_world_model_target(self, trajectory_step: Dict[str, Any], key: str, fallback: Any) -> float:
+        if key in trajectory_step and trajectory_step.get(key) is not None:
+            return self._to_float(trajectory_step.get(key))
+        if fallback is None:
+            return 0.0
+        return self._to_float(fallback)
 
     def _build_state_snapshot(
         self,
@@ -499,8 +591,17 @@ class WorkflowDatasetRecorder:
             stats["success_count"] += float(self._normalize_success(getattr(action, "success", False)))
             stats["total_cost"] += self._to_float(getattr(action, "cost", 0.0))
             if index < len(prefix_trajectory):
-                reward_value = self._to_float(prefix_trajectory[index].get("reward", 0.0))
-                stats["total_credit"] += reward_value
+                reward_value = self._step_world_model_target(
+                    prefix_trajectory[index],
+                    "world_model_reward",
+                    prefix_trajectory[index].get("reward", 0.0),
+                )
+                credit_value = self._step_world_model_target(
+                    prefix_trajectory[index],
+                    "world_model_step_credit",
+                    reward_value,
+                )
+                stats["total_credit"] += credit_value
                 stats["total_reward"] += reward_value
         for role in ordered_roles:
             stats = node_totals[role]
@@ -615,7 +716,8 @@ class WorkflowDatasetRecorder:
         # 便于离线训练时按 episode 切分 train/val。
         task = getattr(global_info, "task", {}) or {}
         question = str(task.get("Question", task.get("question", "")))
-        raw = f"{path_id}|{getattr(global_info, 'workpath', '')}|{question}"
+        task_type = str(task.get("type", task.get("dataset_name", "")))
+        raw = f"{getattr(global_info, 'workpath', '')}|{task_type}|{question}"
         return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
     def _summarize_text(self, value: Any, limit: Optional[int] = None) -> str:

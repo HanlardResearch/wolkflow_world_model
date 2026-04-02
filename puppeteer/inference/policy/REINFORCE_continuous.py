@@ -4,7 +4,7 @@ import logging
 import os
 import copy
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import torch
 import yaml
@@ -646,8 +646,8 @@ class LLM_Scheduler:
         multi_mode_instruction = (
             f"You may return between 1 and {max_num} distinct agents in multi-agent mode, "
             "ordered from highest to lowest confidence. "
-            "Return backup agents only when they provide clear additional value. "
-            "If one agent is clearly the best next step, prefer fewer agents and assign it a substantially higher confidence than the backups."
+            "When uncertainty is non-trivial, evidence is missing, or the workflow is still early, prefer 2-3 complementary agents rather than redundant backups. "
+            "If one agent is clearly the best next step and complementary branches add little value, prefer fewer agents and assign it a substantially higher confidence than the backups."
         )
         candidates = [
             {
@@ -664,14 +664,14 @@ class LLM_Scheduler:
             "content": (
                 "You are the scheduler for a research-oriented multi-agent system. "
                 "Your only job is to decide the next agent or agents, not to solve the user task. "
-                "Be conservative about extra verification. "
-                "Prefer the shortest correct workflow, not the most cautious workflow. "
-                "Do not re-open a solved question just to gain marginal confidence. "
+                "Balance efficiency with exploration across complementary capabilities. "
+                "Prefer diverse branches early when reasoning, evidence, or verification coverage is incomplete. "
+                "Do not re-open a solved question just to gain marginal confidence, but do preserve useful branch diversity before the answer is clearly locked in. "
                 "Stopping policy: "
                 "If different agent types already agree on the same answer and no explicit contradiction exists, prefer finalization or termination. "
                 "Do not schedule CriticAgent after ConcluderAgent unless there is unresolved disagreement, conflicting evidence, missing external evidence, or an explicit failure signal. "
                 "For static factual multiple-choice questions, once reasoning and external evidence converge on the same option, further verification is usually wasteful. "
-                "Treat repeated validation of the same answer as a negative signal unless the state summary explicitly shows conflict or low evidence coverage. "
+                "Treat repeated validation of the same answer as a negative signal unless the state summary explicitly shows conflict, low evidence coverage, or a need for complementary verification. "
                 f"Decision mode keyword: {decision_mode} ({self.mode2description.get(decision_mode, decision_mode)}). "
                 f"{multi_mode_instruction if decision_mode == 'multi' else 'You must return exactly one agent in single-agent mode.'} "
                 f"Current workflow state: {getattr(global_info.workflow, 'state', 'unknown')}. "
@@ -691,7 +691,8 @@ class LLM_Scheduler:
                 f"{json.dumps({'task_question': global_info.task.get('Question', ''), 'workflow_summary': workflow_summary}, ensure_ascii=False)}\n\n"
                 "Use the summary above as state only. "
                 "Do not answer the task directly. "
-                "Prefer the minimal non-redundant next-step schedule. "
+                "Prefer a non-redundant schedule with complementary capabilities when the workflow is still uncertain or incomplete. "
+                "Avoid returning multiple agents that serve the same stage unless the summary shows explicit disagreement. "
                 "If `termination_candidate=true` and there is no conflict, strongly prefer `TerminatorAgent`. "
                 "If a conclusion already exists and verification_status shows no conflict, do not schedule `CriticAgent_gpt4o` again."
             ),
@@ -943,6 +944,15 @@ class ContinuousREINFORCE(LearningPolicy):
         self.scheduler_margin_threshold = float(scheduler_config.get("top1_margin_threshold", 0.15))
         self.scheduler_top2_threshold = float(scheduler_config.get("top2_cumulative_threshold", 0.75))
         self.scheduler_top3_threshold = float(scheduler_config.get("top3_cumulative_threshold", 0.9))
+        self.scheduler_diversity_enabled = bool(scheduler_config.get("diversity_enabled", True))
+        self.scheduler_min_keep_k = max(int(scheduler_config.get("min_keep_k", 1)), 1)
+        self.scheduler_diversity_min_keep_k = max(int(scheduler_config.get("diversity_min_keep_k", 2)), 1)
+        self.scheduler_conflict_min_keep_k = max(
+            int(scheduler_config.get("conflict_min_keep_k", self.scheduler_diversity_min_keep_k + 1)),
+            self.scheduler_diversity_min_keep_k,
+        )
+        self.scheduler_diversity_early_step = max(int(scheduler_config.get("diversity_early_step", 2)), 0)
+        self.scheduler_diversity_max_extra = max(int(scheduler_config.get("diversity_max_extra", 1)), 0)
         effective_scheduler_model_config = dict(scheduler_config)
         if "model_name" not in effective_scheduler_model_config and self.policy_llm_config.get("model_name"):
             effective_scheduler_model_config["model_name"] = self.policy_llm_config.get("model_name")
@@ -1149,6 +1159,94 @@ class ContinuousREINFORCE(LearningPolicy):
 
         return candidate_count
 
+    def _minimum_scheduler_keep_k(self, global_info, decisions, max_num):
+        if (
+            not decisions
+            or self.scheduler_mode == "single_best"
+            or not self.scheduler_diversity_enabled
+        ):
+            return min(len(decisions), 1) if decisions else 0
+
+        candidate_count = min(len(decisions), max_num)
+        if candidate_count <= 1:
+            return candidate_count
+
+        workflow_summary = self.llm_scheduler._build_workflow_summary(global_info)
+        evidence_status = workflow_summary.get("evidence_status", {})
+        verification_status = workflow_summary.get("verification_status", {})
+        answer_consensus = workflow_summary.get("answer_consensus", {})
+        step_count = len(workflow_summary.get("executed_steps", []))
+        min_keep_k = min(self.scheduler_min_keep_k, candidate_count)
+
+        if step_count <= self.scheduler_diversity_early_step:
+            min_keep_k = max(min_keep_k, min(candidate_count, self.scheduler_diversity_min_keep_k))
+
+        if (
+            not evidence_status.get("has_reasoning")
+            or not evidence_status.get("has_external_evidence")
+            or not evidence_status.get("has_conclusion")
+        ):
+            min_keep_k = max(min_keep_k, min(candidate_count, self.scheduler_diversity_min_keep_k))
+
+        if verification_status.get("has_conflict"):
+            min_keep_k = max(min_keep_k, min(candidate_count, self.scheduler_conflict_min_keep_k))
+
+        if answer_consensus.get("recent_count", 0) == 0 and step_count <= self.scheduler_diversity_early_step + 1:
+            min_keep_k = max(min_keep_k, min(candidate_count, self.scheduler_diversity_min_keep_k))
+
+        if workflow_summary.get("termination_candidate") and not verification_status.get("has_conflict"):
+            return 1
+
+        return min_keep_k
+
+    def _diversity_score(self, decision, selected_decisions):
+        metadata = self.llm_scheduler._get_agent_metadata(decision["name"])
+        stage = metadata.get("best_for_stage", "general")
+        needs_external = bool(metadata.get("needs_external_tools", False))
+        output_type = metadata.get("output_type", "general_result")
+        selected_stages = {
+            self.llm_scheduler._get_agent_metadata(item["name"]).get("best_for_stage", "general")
+            for item in selected_decisions
+        }
+        selected_external = {
+            bool(self.llm_scheduler._get_agent_metadata(item["name"]).get("needs_external_tools", False))
+            for item in selected_decisions
+        }
+        selected_output_types = {
+            self.llm_scheduler._get_agent_metadata(item["name"]).get("output_type", "general_result")
+            for item in selected_decisions
+        }
+        score = float(decision["confidence"])
+        if stage not in selected_stages:
+            score += 1.0
+        if needs_external not in selected_external:
+            score += 0.45
+        if output_type not in selected_output_types:
+            score += 0.35
+        if decision["name"] == self.agent_role_list[self.end_action.item()] and len(selected_decisions) > 0:
+            score -= 0.8
+        return score
+
+    def _select_diverse_scheduler_decisions(self, decisions, keep_k, max_num):
+        if not decisions:
+            return []
+        target_k = max(1, min(len(decisions), max_num, keep_k))
+        if target_k == 1:
+            return decisions[:1]
+
+        selected = [decisions[0]]
+        remaining = list(decisions[1:])
+        while remaining and len(selected) < target_k:
+            best_index = 0
+            best_score = None
+            for index, candidate in enumerate(remaining):
+                score = self._diversity_score(candidate, selected)
+                if best_score is None or score > best_score:
+                    best_score = score
+                    best_index = index
+            selected.append(remaining.pop(best_index))
+        return sorted(selected, key=lambda item: item["confidence"], reverse=True)
+
     def _decide_agent_indices(self, global_info):
         if self.scheduler_mode == "single_best":
             max_num = 1
@@ -1173,7 +1271,15 @@ class ContinuousREINFORCE(LearningPolicy):
 
         decisions = self._sharpen_scheduler_decisions(decisions)
         keep_k = self._determine_scheduler_keep_k(decisions, max_num)
-        decisions = decisions[:keep_k]
+        min_keep_k = self._minimum_scheduler_keep_k(global_info, decisions, max_num)
+        keep_k = min(max_num, max(keep_k, min_keep_k))
+        if (
+            self.scheduler_diversity_enabled
+            and self.scheduler_diversity_max_extra >= 0
+            and min_keep_k > self.scheduler_min_keep_k
+        ):
+            keep_k = min(keep_k, min(max_num, min_keep_k + self.scheduler_diversity_max_extra))
+        decisions = self._select_diverse_scheduler_decisions(decisions, keep_k=keep_k, max_num=max_num)
         logger.info(
             "Scheduler sharpened decisions: {}".format(
                 [
@@ -1186,7 +1292,12 @@ class ContinuousREINFORCE(LearningPolicy):
                 ]
             )
         )
-        logger.info("Scheduler keep_k after confidence sharpening: {}".format(keep_k))
+        logger.info(
+            "Scheduler keep_k after confidence sharpening: {} (minimum for diversity: {})".format(
+                keep_k,
+                min_keep_k,
+            )
+        )
 
         selected_indices = [item["index"] for item in decisions]
         if not selected_indices:
@@ -1346,6 +1457,8 @@ class ContinuousREINFORCE(LearningPolicy):
         return {}
 
     def finalize_task(self, transition, global_info):
+        self.finalize_task_batch([{"transition": transition, "global_info": global_info}])
+        return
         logger.info("transition reward: {}".format(transition.get("reward", 0)))
         if self.execution_count <= 0:
             self.rewards_history.append(transition.get("reward", 0))
@@ -1413,6 +1526,193 @@ class ContinuousREINFORCE(LearningPolicy):
                     gamma=self.gamma,
                 )
         self.rewards_history.append(transition.get("reward", 0))
+
+    def finalize_task_batch(self, finalized_paths):
+        transition_rewards = [item["transition"].get("reward", 0) for item in finalized_paths]
+        logger.info("transition rewards: {}".format(transition_rewards))
+        if self.execution_count <= 0:
+            self.rewards_history.extend(transition_rewards)
+            return
+
+        self.current_trajectories = self.executed_trajectories[self.execution_count - 1]
+        prepared_paths = []
+        for item in finalized_paths:
+            transition = item["transition"]
+            global_info = item["global_info"]
+            idx = int(transition.get("path_id", 0) or 0)
+            if not self.current_trajectories or idx < 0 or idx >= len(self.current_trajectories):
+                continue
+            current_trajectory = self.current_trajectories[idx]
+            if not current_trajectory:
+                continue
+            self._prepare_trajectory_for_finalize(current_trajectory, transition, global_info, idx)
+            prepared_paths.append(
+                {
+                    "path_id": idx,
+                    "trajectory": current_trajectory,
+                    "transition": transition,
+                    "global_info": global_info,
+                    "terminal_reward": float(transition.get("reward", 0.0)),
+                }
+            )
+
+        world_model_targets = self._build_world_model_tree_targets(prepared_paths)
+        for item in prepared_paths:
+            idx = item["path_id"]
+            self._annotate_trajectory_with_world_model_targets(
+                item["trajectory"],
+                world_model_targets.get(idx, []),
+            )
+            self.world_model_recorder.record_completed_trajectory(
+                item["trajectory"],
+                item["global_info"],
+                item["transition"],
+                path_id=idx,
+                gamma=self.gamma,
+            )
+
+        self.rewards_history.extend(transition_rewards)
+
+    def _prepare_trajectory_for_finalize(self, current_trajectory, transition, global_info, idx):
+        for index, action in enumerate(global_info.workflow.workflow):
+            if index >= len(current_trajectory):
+                break
+            cost = action.cost
+            logger.info("token cost: {}".format(cost))
+            logger.info("cost factor: {}".format(cost / 100000))
+            current_trajectory[index]["reward"] *= cost / 100000
+            logger.info("Reward: {}".format(current_trajectory[index]["reward"]))
+
+        if not current_trajectory:
+            return
+
+        step_reward = self.logarithmic_cost(len(current_trajectory))
+        total_tokens = global_info.total_tokens
+        total_cost = global_info.total_cost
+        if transition.get("reward", 0) > 0:
+            reward = transition.get("reward", 0) + self.agent_reward_factor[self.end_action.item()] * step_reward
+        else:
+            reward = transition.get("reward", 0) - self.agent_reward_factor[self.end_action.item()] * step_reward
+
+        if current_trajectory[-1].get("action") == self.agent_role_list[self.end_action.item()]:
+            current_trajectory[-1]["reward"] = reward
+            current_trajectory[-1]["total_tokens"] = total_tokens
+            current_trajectory[-1]["total_cost"] = total_cost
+            current_trajectory[-1]["finalized"] = True
+            current_trajectory[-1]["reward_model"] = 0
+            current_trajectory[-1]["metrics"] = transition.get("metrics", {})
+            logger.info("Last Reward: {}".format(current_trajectory[-1]["reward"]))
+            return
+
+        current_trajectory.append(
+            {
+                "prob": torch.tensor(1.0, device=self.device),
+                "log_prob": torch.tensor(0.0, device=self.device),
+                "state_identifier": transition.get("state", global_info.workflow.state),
+                "action": self.agent_role_list[self.end_action.item()],
+                "reward": reward,
+                "reward_model": 0,
+                "finalized": True,
+                "total_tokens": total_tokens,
+                "total_cost": total_cost,
+                "metrics": transition.get("metrics", {}),
+                "state_snapshot": self.world_model_recorder.capture_decision_state(global_info),
+                "candidate_agents": [self.agent_role_list[self.end_action.item()]],
+                "selected_confidence": 1.0,
+                "path_id": idx,
+            }
+        )
+        logger.info("Last Reward: {}".format(current_trajectory[-1]["reward"]))
+
+    def _build_world_model_tree_targets(self, prepared_paths):
+        node_leaf_rewards: Dict[Tuple[str, ...], List[float]] = {}
+        child_prefixes: Dict[Tuple[str, ...], List[Tuple[str, ...]]] = {}
+        node_values: Dict[Tuple[str, ...], float] = {}
+        node_leaf_counts: Dict[Tuple[str, ...], int] = {}
+        path_targets: Dict[int, List[Dict[str, float]]] = {}
+
+        if not prepared_paths:
+            return path_targets
+
+        for item in prepared_paths:
+            sequence = tuple(str(step.get("action", "")).strip() for step in item["trajectory"] if step.get("action"))
+            terminal_reward = float(item["terminal_reward"])
+            item["action_sequence"] = sequence
+            for depth in range(len(sequence) + 1):
+                prefix = sequence[:depth]
+                node_leaf_rewards.setdefault(prefix, []).append(terminal_reward)
+                if depth < len(sequence):
+                    child_prefix = sequence[: depth + 1]
+                    children = child_prefixes.setdefault(prefix, [])
+                    if child_prefix not in children:
+                        children.append(child_prefix)
+
+        for prefix, rewards in node_leaf_rewards.items():
+            node_leaf_counts[prefix] = len(rewards)
+            node_values[prefix] = sum(rewards) / max(len(rewards), 1)
+
+        for item in prepared_paths:
+            sequence = item.get("action_sequence", ())
+            terminal_reward = float(item["terminal_reward"])
+            step_targets: List[Dict[str, float]] = []
+            for step_index in range(len(sequence)):
+                parent_prefix = sequence[:step_index]
+                child_prefix = sequence[: step_index + 1]
+                parent_value = node_values.get(parent_prefix, 0.0)
+                action_value = node_values.get(child_prefix, terminal_reward)
+                sibling_values = [
+                    node_values.get(candidate_prefix, parent_value)
+                    for candidate_prefix in child_prefixes.get(parent_prefix, [])
+                    if candidate_prefix != child_prefix
+                ]
+                sibling_baseline = (
+                    sum(sibling_values) / len(sibling_values)
+                    if sibling_values
+                    else parent_value
+                )
+                step_credit = action_value - parent_value
+                leave_one_out_gap = action_value - sibling_baseline if sibling_values else step_credit
+                step_targets.append(
+                    {
+                        "reward": action_value,
+                        "mc_return": action_value,
+                        "step_credit": step_credit,
+                        "leave_one_out_gap": leave_one_out_gap,
+                        "parent_value": parent_value,
+                        "action_value": action_value,
+                        "sibling_baseline": sibling_baseline,
+                        "descendant_leaves": float(node_leaf_counts.get(child_prefix, 0)),
+                        "leaf_reward": terminal_reward,
+                    }
+                )
+
+            for step_index, step_target in enumerate(step_targets):
+                horizon_return = 0.0
+                for offset in range(2):
+                    target_index = step_index + offset
+                    if target_index >= len(step_targets):
+                        break
+                    horizon_return += (self.gamma ** offset) * float(step_targets[target_index]["step_credit"])
+                step_target["h2_return"] = horizon_return
+
+            path_targets[item["path_id"]] = step_targets
+        return path_targets
+
+    def _annotate_trajectory_with_world_model_targets(self, trajectory, step_targets):
+        for step_index, step_target in enumerate(step_targets):
+            if step_index >= len(trajectory):
+                break
+            step = trajectory[step_index]
+            step["world_model_reward"] = float(step_target["reward"])
+            step["world_model_mc_return"] = float(step_target["mc_return"])
+            step["world_model_h2_return"] = float(step_target["h2_return"])
+            step["world_model_step_credit"] = float(step_target["step_credit"])
+            step["world_model_leave_one_out_gap"] = float(step_target["leave_one_out_gap"])
+            step["world_model_parent_value"] = float(step_target["parent_value"])
+            step["world_model_action_value"] = float(step_target["action_value"])
+            step["world_model_sibling_baseline"] = float(step_target["sibling_baseline"])
+            step["world_model_descendant_leaves"] = int(step_target["descendant_leaves"])
+            step["world_model_leaf_reward"] = float(step_target["leaf_reward"])
 
     def select_agents_by_probability(self, action_probs):
         num_agents_to_select = torch.randint(1, self.max_num_agents + 1, (1,)).item()

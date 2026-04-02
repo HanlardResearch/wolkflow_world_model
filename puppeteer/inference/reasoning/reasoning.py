@@ -193,6 +193,7 @@ class GraphReasoning:
     def finalize(self):
         print("-"*10+"\033[1;31mGraph Reasoning Finalize\033[0m"+"-"*10)
         print(p for p in self.reasoning_paths)
+        finalized_paths = []
         for idx, reasoning_path in enumerate(self.reasoning_paths):
             if hasattr(reasoning_path, "last_query_func"):
                 aggregated_answer = self.aggregate_answers(reasoning_path.global_info, reasoning_path.global_info.state_answers, reasoning_path.last_query_func)
@@ -208,7 +209,7 @@ class GraphReasoning:
                 'path_id': idx 
                 }
                 print(transition)
-                self.policy.finalize_task(transition, reasoning_path.global_info)
+                finalized_paths.append({"transition": transition, "global_info": reasoning_path.global_info})
             elif self.task.get("type") == "GSM-Hard": 
                 transition = {
                 'state': reasoning_path.global_info.workflow.state,
@@ -219,7 +220,7 @@ class GraphReasoning:
                 'path_id': idx 
                 }
                 print(transition)
-                self.policy.finalize_task(transition, reasoning_path.global_info)
+                finalized_paths.append({"transition": transition, "global_info": reasoning_path.global_info})
 
             elif self.task.get("type") == "SRDD":
                 reward, metrics = BenchmarkEvaluator.check_srdd(aggregated_answer, reasoning_path.global_info.task.get("Question"))
@@ -233,7 +234,7 @@ class GraphReasoning:
                 "metrics":metrics
                 }
                 main_logger.info(metrics)
-                self.policy.finalize_task(transition, reasoning_path.global_info)
+                finalized_paths.append({"transition": transition, "global_info": reasoning_path.global_info})
             elif self.task.get("type") == "CW":
                 reward, metrics = BenchmarkEvaluator.check_commongen(concepts=reasoning_path.global_info.task.get("concepts"), text_path=aggregated_answer)
                 transition = {
@@ -246,10 +247,12 @@ class GraphReasoning:
                 "metrics":metrics
                 }
                 main_logger.info(metrics)
-                self.policy.finalize_task(transition, reasoning_path.global_info)
+                finalized_paths.append({"transition": transition, "global_info": reasoning_path.global_info})
             if aggregated_answer is not None:
                 self.answers.append(aggregated_answer)
                 main_logger.info("[Aggregated Answer From Path {}]: {}".format(idx, aggregated_answer))   
+        if finalized_paths:
+            self.policy.finalize_task_batch(finalized_paths)
         self.policy.update()
         
         for agent in agent_global_registry.agents.values():

@@ -36,6 +36,10 @@ class LearningPolicy(Policy):
     
     def finalize_task(self, transition, global_info):
         raise NotImplementedError
+
+    def finalize_task_batch(self, finalized_paths):
+        for item in finalized_paths:
+            self.finalize_task(item["transition"], item["global_info"])
     
 class LLMPolicy(Policy):
     def __init__(self, agent_graph, action_graph) -> None:
