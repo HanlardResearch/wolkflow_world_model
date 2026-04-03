@@ -1,0 +1,3059 @@
+{
+  "overview": {
+    "file_count": 96,
+    "record_count": 771,
+    "signature_count": 250,
+    "repeated_signature_count": 80,
+    "repeated_signature_ratio": 0.32
+  },
+  "top_actions": [
+    {
+      "name": "TerminatorAgent",
+      "count": 207
+    },
+    {
+      "name": "ReasoningAgent_gpt4o",
+      "count": 197
+    },
+    {
+      "name": "PythonAgent_gpt4o",
+      "count": 91
+    },
+    {
+      "name": "ConcluderAgent_gpt4o",
+      "count": 86
+    },
+    {
+      "name": "CriticAgent_gpt4o",
+      "count": 67
+    },
+    {
+      "name": "TavilyAgent",
+      "count": 47
+    },
+    {
+      "name": "QuestionAgent_gpt4o",
+      "count": 27
+    },
+    {
+      "name": "FileAgent",
+      "count": 18
+    },
+    {
+      "name": "PlannerAgent_gpt4o",
+      "count": 14
+    },
+    {
+      "name": "ArxivAgent",
+      "count": 11
+    },
+    {
+      "name": "WebsiteAgent",
+      "count": 6
+    }
+  ],
+  "top_workflow_states": [
+    {
+      "name": "((None, None, -1),)",
+      "count": 207
+    },
+    {
+      "name": "(('ReasoningAgent_gpt4o', 'reasoning', 1),)",
+      "count": 81
+    },
+    {
+      "name": "(('PythonAgent_gpt4o', 'run_python', 0),)",
+      "count": 51
+    },
+    {
+      "name": "(('PythonAgent_gpt4o', 'run_python', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1))",
+      "count": 42
+    },
+    {
+      "name": "(('ReasoningAgent_gpt4o', 'reasoning', 1), ('ConcluderAgent_gpt4o', 'conclude', 1))",
+      "count": 24
+    },
+    {
+      "name": "(('TavilyAgent', 'search_tavily', 1),)",
+      "count": 23
+    },
+    {
+      "name": "(('ReasoningAgent_gpt4o', 'reasoning', 1), ('CriticAgent_gpt4o', 'critique', 1))",
+      "count": 23
+    },
+    {
+      "name": "(('QuestionAgent_gpt4o', 'question', 1),)",
+      "count": 18
+    },
+    {
+      "name": "(('FileAgent', 'read_file', 0),)",
+      "count": 14
+    },
+    {
+      "name": "(('PythonAgent_gpt4o', 'run_python', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1), ('ConcluderAgent_gpt4o', 'conclude', 1))",
+      "count": 14
+    },
+    {
+      "name": "(('TavilyAgent', 'search_tavily', 1), ('ReasoningAgent_gpt4o', 'reasoning', 1))",
+      "count": 10
+    },
+    {
+      "name": "(('PythonAgent_gpt4o', 'run_python', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1), ('CriticAgent_gpt4o', 'critique', 1))",
+      "count": 10
+    },
+    {
+      "name": "(('PlannerAgent_gpt4o', 'planning', 1),)",
+      "count": 9
+    },
+    {
+      "name": "(('ArxivAgent', 'search_arxiv', 1),)",
+      "count": 7
+    },
+    {
+      "name": "(('ReasoningAgent_gpt4o', 'reasoning', 1), ('TavilyAgent', 'search_tavily', 1))",
+      "count": 7
+    },
+    {
+      "name": "(('QuestionAgent_gpt4o', 'question', 1), ('PythonAgent_gpt4o', 'run_python', 0))",
+      "count": 7
+    },
+    {
+      "name": "(('ReasoningAgent_gpt4o', 'reasoning', 1), ('PythonAgent_gpt4o', 'run_python', 0))",
+      "count": 7
+    },
+    {
+      "name": "(('TavilyAgent', 'search_tavily', 1), ('ConcluderAgent_gpt4o', 'conclude', 1))",
+      "count": 6
+    },
+    {
+      "name": "(('FileAgent', 'read_file', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1))",
+      "count": 5
+    },
+    {
+      "name": "(('FileAgent', 'read_file', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1), ('ConcluderAgent_gpt4o', 'conclude', 1))",
+      "count": 5
+    }
+  ],
+  "top_task_types": [
+    {
+      "name": "MMLU-Pro",
+      "count": 771
+    }
+  ],
+  "top_signatures": [
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "((None, None, -1),)",
+      "action_name": "ReasoningAgent_gpt4o",
+      "count": 81
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "((None, None, -1),)",
+      "action_name": "PythonAgent_gpt4o",
+      "count": 51
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('PythonAgent_gpt4o', 'run_python', 0),)",
+      "action_name": "ReasoningAgent_gpt4o",
+      "count": 42
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1),)",
+      "action_name": "ConcluderAgent_gpt4o",
+      "count": 24
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1),)",
+      "action_name": "CriticAgent_gpt4o",
+      "count": 23
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "((None, None, -1),)",
+      "action_name": "TavilyAgent",
+      "count": 23
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1), ('ConcluderAgent_gpt4o', 'conclude', 1))",
+      "action_name": "TerminatorAgent",
+      "count": 21
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1), ('CriticAgent_gpt4o', 'critique', 1))",
+      "action_name": "TerminatorAgent",
+      "count": 21
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "((None, None, -1),)",
+      "action_name": "QuestionAgent_gpt4o",
+      "count": 18
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('PythonAgent_gpt4o', 'run_python', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1))",
+      "action_name": "ConcluderAgent_gpt4o",
+      "count": 14
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "((None, None, -1),)",
+      "action_name": "FileAgent",
+      "count": 14
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('PythonAgent_gpt4o', 'run_python', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1), ('ConcluderAgent_gpt4o', 'conclude', 1))",
+      "action_name": "TerminatorAgent",
+      "count": 14
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1),)",
+      "action_name": "TerminatorAgent",
+      "count": 14
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('PythonAgent_gpt4o', 'run_python', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1))",
+      "action_name": "TerminatorAgent",
+      "count": 11
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('PythonAgent_gpt4o', 'run_python', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1))",
+      "action_name": "CriticAgent_gpt4o",
+      "count": 10
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('TavilyAgent', 'search_tavily', 1),)",
+      "action_name": "ReasoningAgent_gpt4o",
+      "count": 10
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "((None, None, -1),)",
+      "action_name": "PlannerAgent_gpt4o",
+      "count": 9
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "((None, None, -1),)",
+      "action_name": "ArxivAgent",
+      "count": 8
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('PythonAgent_gpt4o', 'run_python', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1), ('CriticAgent_gpt4o', 'critique', 1))",
+      "action_name": "TerminatorAgent",
+      "count": 8
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('QuestionAgent_gpt4o', 'question', 1),)",
+      "action_name": "PythonAgent_gpt4o",
+      "count": 7
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1),)",
+      "action_name": "PythonAgent_gpt4o",
+      "count": 7
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1),)",
+      "action_name": "TavilyAgent",
+      "count": 7
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('TavilyAgent', 'search_tavily', 1), ('ReasoningAgent_gpt4o', 'reasoning', 1))",
+      "action_name": "TerminatorAgent",
+      "count": 7
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('TavilyAgent', 'search_tavily', 1),)",
+      "action_name": "ConcluderAgent_gpt4o",
+      "count": 6
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('FileAgent', 'read_file', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1))",
+      "action_name": "ConcluderAgent_gpt4o",
+      "count": 5
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('PlannerAgent_gpt4o', 'planning', 1),)",
+      "action_name": "PythonAgent_gpt4o",
+      "count": 5
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('FileAgent', 'read_file', 0),)",
+      "action_name": "ReasoningAgent_gpt4o",
+      "count": 5
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('QuestionAgent_gpt4o', 'question', 1), ('PythonAgent_gpt4o', 'run_python', 0))",
+      "action_name": "ReasoningAgent_gpt4o",
+      "count": 5
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('FileAgent', 'read_file', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1), ('ConcluderAgent_gpt4o', 'conclude', 1))",
+      "action_name": "TerminatorAgent",
+      "count": 5
+    },
+    {
+      "task_type": "MMLU-Pro",
+      "workflow_state": "(('PythonAgent_gpt4o', 'run_python', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1))",
+      "action_name": "PythonAgent_gpt4o",
+      "count": 4
+    }
+  ],
+  "label_conflicts": {
+    "reward": {
+      "signature_count": 250,
+      "repeated_signature_count": 80,
+      "conflicting_signature_count": 31,
+      "conflicting_signature_ratio": 0.3875,
+      "conflicting_record_count": 383,
+      "conflicting_record_ratio": 0.496757457846952,
+      "range_stats": {
+        "count": 31.0,
+        "mean": 1.9193548387096775,
+        "std": 0.31358422734231584,
+        "min": 0.5,
+        "max": 2.0,
+        "p25": 2.0,
+        "p50": 2.0,
+        "p75": 2.0
+      },
+      "examples": [
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 81,
+          "unique_values": [
+            -1.0,
+            -0.5,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            6,
+            19,
+            25,
+            31,
+            37,
+            42,
+            54,
+            57,
+            60,
+            64,
+            68,
+            72,
+            75,
+            80,
+            83,
+            85,
+            88,
+            94,
+            112,
+            118
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1),)",
+          "action_name": "ConcluderAgent_gpt4o",
+          "count": 24,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            20,
+            55,
+            58,
+            61,
+            65,
+            69,
+            73,
+            86,
+            119,
+            135,
+            233,
+            251,
+            313,
+            338,
+            381,
+            423,
+            426,
+            467,
+            489,
+            570
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1),)",
+          "action_name": "CriticAgent_gpt4o",
+          "count": 23,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            7,
+            32,
+            81,
+            89,
+            113,
+            125,
+            239,
+            257,
+            298,
+            310,
+            417,
+            429,
+            450,
+            460,
+            464,
+            470,
+            530,
+            543,
+            555,
+            587
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "TavilyAgent",
+          "count": 23,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            0,
+            16,
+            28,
+            34,
+            78,
+            91,
+            145,
+            161,
+            179,
+            210,
+            345,
+            357,
+            363,
+            453,
+            481,
+            508,
+            520,
+            523,
+            536,
+            596
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1), ('CriticAgent_gpt4o', 'critique', 1))",
+          "action_name": "TerminatorAgent",
+          "count": 21,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            8,
+            33,
+            82,
+            90,
+            114,
+            126,
+            240,
+            258,
+            299,
+            311,
+            418,
+            430,
+            465,
+            471,
+            531,
+            544,
+            556,
+            588,
+            620,
+            690
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1), ('ConcluderAgent_gpt4o', 'conclude', 1))",
+          "action_name": "TerminatorAgent",
+          "count": 21,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            21,
+            56,
+            59,
+            74,
+            87,
+            120,
+            136,
+            234,
+            252,
+            314,
+            339,
+            382,
+            424,
+            427,
+            468,
+            490,
+            571,
+            601,
+            629,
+            632
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "QuestionAgent_gpt4o",
+          "count": 18,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            22,
+            39,
+            50,
+            115,
+            186,
+            197,
+            221,
+            292,
+            300,
+            376,
+            383,
+            472,
+            491,
+            500,
+            505,
+            572,
+            582,
+            669
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "FileAgent",
+          "count": 14,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            9,
+            96,
+            101,
+            106,
+            137,
+            148,
+            153,
+            172,
+            202,
+            474,
+            484,
+            578,
+            641,
+            650
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1),)",
+          "action_name": "TerminatorAgent",
+          "count": 14,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            38,
+            84,
+            95,
+            171,
+            214,
+            316,
+            341,
+            494,
+            504,
+            595,
+            622,
+            660,
+            730,
+            746
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('TavilyAgent', 'search_tavily', 1),)",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 10,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            1,
+            35,
+            92,
+            146,
+            162,
+            180,
+            521,
+            537,
+            603,
+            637
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "PlannerAgent_gpt4o",
+          "count": 9,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            45,
+            183,
+            191,
+            215,
+            226,
+            373,
+            495,
+            750,
+            754
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('QuestionAgent_gpt4o', 'question', 1),)",
+          "action_name": "PythonAgent_gpt4o",
+          "count": 7,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            187,
+            198,
+            222,
+            301,
+            573,
+            583,
+            670
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1),)",
+          "action_name": "TavilyAgent",
+          "count": 7,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            26,
+            43,
+            352,
+            389,
+            397,
+            403,
+            457
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('TavilyAgent', 'search_tavily', 1), ('ReasoningAgent_gpt4o', 'reasoning', 1))",
+          "action_name": "TerminatorAgent",
+          "count": 7,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            2,
+            36,
+            93,
+            147,
+            163,
+            522,
+            538
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('TavilyAgent', 'search_tavily', 1),)",
+          "action_name": "ConcluderAgent_gpt4o",
+          "count": 6,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            17,
+            211,
+            454,
+            482,
+            509,
+            524
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('FileAgent', 'read_file', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1))",
+          "action_name": "ConcluderAgent_gpt4o",
+          "count": 5,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            11,
+            139,
+            155,
+            204,
+            476
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('FileAgent', 'read_file', 0),)",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 5,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            10,
+            138,
+            154,
+            203,
+            475
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('QuestionAgent_gpt4o', 'question', 1), ('PythonAgent_gpt4o', 'run_python', 0))",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 5,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            188,
+            223,
+            302,
+            584,
+            671
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('FileAgent', 'read_file', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1), ('ConcluderAgent_gpt4o', 'conclude', 1))",
+          "action_name": "TerminatorAgent",
+          "count": 5,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            12,
+            140,
+            156,
+            205,
+            477
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('QuestionAgent_gpt4o', 'question', 1),)",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 4,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            293,
+            377,
+            384,
+            506
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('FileAgent', 'read_file', 0),)",
+          "action_name": "TavilyAgent",
+          "count": 3,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            107,
+            485,
+            642
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('WebsiteAgent', 'access_website', 1),)",
+          "action_name": "ConcluderAgent_gpt4o",
+          "count": 2,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            4,
+            515
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('FileAgent', 'read_file', 0), ('TavilyAgent', 'search_tavily', 1))",
+          "action_name": "ConcluderAgent_gpt4o",
+          "count": 2,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            108,
+            486
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('TavilyAgent', 'search_tavily', 1), ('ReasoningAgent_gpt4o', 'reasoning', 1))",
+          "action_name": "ConcluderAgent_gpt4o",
+          "count": 2,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            181,
+            604
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('TavilyAgent', 'search_tavily', 1),)",
+          "action_name": "TavilyAgent",
+          "count": 2,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            29,
+            597
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('TavilyAgent', 'search_tavily', 1), ('TavilyAgent', 'search_tavily', 1))",
+          "action_name": "TerminatorAgent",
+          "count": 2,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            30,
+            598
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('TavilyAgent', 'search_tavily', 1), ('ReasoningAgent_gpt4o', 'reasoning', 1), ('ConcluderAgent_gpt4o', 'conclude', 1))",
+          "action_name": "TerminatorAgent",
+          "count": 2,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            182,
+            605
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('QuestionAgent_gpt4o', 'question', 1),)",
+          "action_name": "TerminatorAgent",
+          "count": 2,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            473,
+            492
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "WebsiteAgent",
+          "count": 2,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            3,
+            514
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('PythonAgent_gpt4o', 'run_python', 0),)",
+          "action_name": "QuestionAgent_gpt4o",
+          "count": 4,
+          "unique_values": [
+            0.0,
+            1.0
+          ],
+          "min": 0.0,
+          "max": 1.0,
+          "range": 1.0,
+          "record_indices": [
+            282,
+            288,
+            326,
+            332
+          ]
+        }
+      ]
+    },
+    "value": {
+      "signature_count": 250,
+      "repeated_signature_count": 80,
+      "conflicting_signature_count": 31,
+      "conflicting_signature_ratio": 0.3875,
+      "conflicting_record_count": 383,
+      "conflicting_record_ratio": 0.496757457846952,
+      "range_stats": {
+        "count": 31.0,
+        "mean": 1.9193548387096775,
+        "std": 0.31358422734231584,
+        "min": 0.5,
+        "max": 2.0,
+        "p25": 2.0,
+        "p50": 2.0,
+        "p75": 2.0
+      },
+      "examples": [
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 81,
+          "unique_values": [
+            -1.0,
+            -0.5,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            6,
+            19,
+            25,
+            31,
+            37,
+            42,
+            54,
+            57,
+            60,
+            64,
+            68,
+            72,
+            75,
+            80,
+            83,
+            85,
+            88,
+            94,
+            112,
+            118
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1),)",
+          "action_name": "ConcluderAgent_gpt4o",
+          "count": 24,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            20,
+            55,
+            58,
+            61,
+            65,
+            69,
+            73,
+            86,
+            119,
+            135,
+            233,
+            251,
+            313,
+            338,
+            381,
+            423,
+            426,
+            467,
+            489,
+            570
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1),)",
+          "action_name": "CriticAgent_gpt4o",
+          "count": 23,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            7,
+            32,
+            81,
+            89,
+            113,
+            125,
+            239,
+            257,
+            298,
+            310,
+            417,
+            429,
+            450,
+            460,
+            464,
+            470,
+            530,
+            543,
+            555,
+            587
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "TavilyAgent",
+          "count": 23,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            0,
+            16,
+            28,
+            34,
+            78,
+            91,
+            145,
+            161,
+            179,
+            210,
+            345,
+            357,
+            363,
+            453,
+            481,
+            508,
+            520,
+            523,
+            536,
+            596
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1), ('CriticAgent_gpt4o', 'critique', 1))",
+          "action_name": "TerminatorAgent",
+          "count": 21,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            8,
+            33,
+            82,
+            90,
+            114,
+            126,
+            240,
+            258,
+            299,
+            311,
+            418,
+            430,
+            465,
+            471,
+            531,
+            544,
+            556,
+            588,
+            620,
+            690
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1), ('ConcluderAgent_gpt4o', 'conclude', 1))",
+          "action_name": "TerminatorAgent",
+          "count": 21,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            21,
+            56,
+            59,
+            74,
+            87,
+            120,
+            136,
+            234,
+            252,
+            314,
+            339,
+            382,
+            424,
+            427,
+            468,
+            490,
+            571,
+            601,
+            629,
+            632
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "QuestionAgent_gpt4o",
+          "count": 18,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            22,
+            39,
+            50,
+            115,
+            186,
+            197,
+            221,
+            292,
+            300,
+            376,
+            383,
+            472,
+            491,
+            500,
+            505,
+            572,
+            582,
+            669
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "FileAgent",
+          "count": 14,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            9,
+            96,
+            101,
+            106,
+            137,
+            148,
+            153,
+            172,
+            202,
+            474,
+            484,
+            578,
+            641,
+            650
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1),)",
+          "action_name": "TerminatorAgent",
+          "count": 14,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            38,
+            84,
+            95,
+            171,
+            214,
+            316,
+            341,
+            494,
+            504,
+            595,
+            622,
+            660,
+            730,
+            746
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('TavilyAgent', 'search_tavily', 1),)",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 10,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            1,
+            35,
+            92,
+            146,
+            162,
+            180,
+            521,
+            537,
+            603,
+            637
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "PlannerAgent_gpt4o",
+          "count": 9,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            45,
+            183,
+            191,
+            215,
+            226,
+            373,
+            495,
+            750,
+            754
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('QuestionAgent_gpt4o', 'question', 1),)",
+          "action_name": "PythonAgent_gpt4o",
+          "count": 7,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            187,
+            198,
+            222,
+            301,
+            573,
+            583,
+            670
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1),)",
+          "action_name": "TavilyAgent",
+          "count": 7,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            26,
+            43,
+            352,
+            389,
+            397,
+            403,
+            457
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('TavilyAgent', 'search_tavily', 1), ('ReasoningAgent_gpt4o', 'reasoning', 1))",
+          "action_name": "TerminatorAgent",
+          "count": 7,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            2,
+            36,
+            93,
+            147,
+            163,
+            522,
+            538
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('TavilyAgent', 'search_tavily', 1),)",
+          "action_name": "ConcluderAgent_gpt4o",
+          "count": 6,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            17,
+            211,
+            454,
+            482,
+            509,
+            524
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('FileAgent', 'read_file', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1))",
+          "action_name": "ConcluderAgent_gpt4o",
+          "count": 5,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            11,
+            139,
+            155,
+            204,
+            476
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('FileAgent', 'read_file', 0),)",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 5,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            10,
+            138,
+            154,
+            203,
+            475
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('QuestionAgent_gpt4o', 'question', 1), ('PythonAgent_gpt4o', 'run_python', 0))",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 5,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            188,
+            223,
+            302,
+            584,
+            671
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('FileAgent', 'read_file', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1), ('ConcluderAgent_gpt4o', 'conclude', 1))",
+          "action_name": "TerminatorAgent",
+          "count": 5,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            12,
+            140,
+            156,
+            205,
+            477
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('QuestionAgent_gpt4o', 'question', 1),)",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 4,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            293,
+            377,
+            384,
+            506
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('FileAgent', 'read_file', 0),)",
+          "action_name": "TavilyAgent",
+          "count": 3,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            107,
+            485,
+            642
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('WebsiteAgent', 'access_website', 1),)",
+          "action_name": "ConcluderAgent_gpt4o",
+          "count": 2,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            4,
+            515
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('FileAgent', 'read_file', 0), ('TavilyAgent', 'search_tavily', 1))",
+          "action_name": "ConcluderAgent_gpt4o",
+          "count": 2,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            108,
+            486
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('TavilyAgent', 'search_tavily', 1), ('ReasoningAgent_gpt4o', 'reasoning', 1))",
+          "action_name": "ConcluderAgent_gpt4o",
+          "count": 2,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            181,
+            604
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('TavilyAgent', 'search_tavily', 1),)",
+          "action_name": "TavilyAgent",
+          "count": 2,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            29,
+            597
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('TavilyAgent', 'search_tavily', 1), ('TavilyAgent', 'search_tavily', 1))",
+          "action_name": "TerminatorAgent",
+          "count": 2,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            30,
+            598
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('TavilyAgent', 'search_tavily', 1), ('ReasoningAgent_gpt4o', 'reasoning', 1), ('ConcluderAgent_gpt4o', 'conclude', 1))",
+          "action_name": "TerminatorAgent",
+          "count": 2,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            182,
+            605
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('QuestionAgent_gpt4o', 'question', 1),)",
+          "action_name": "TerminatorAgent",
+          "count": 2,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            473,
+            492
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "WebsiteAgent",
+          "count": 2,
+          "unique_values": [
+            -1.0,
+            1.0
+          ],
+          "min": -1.0,
+          "max": 1.0,
+          "range": 2.0,
+          "record_indices": [
+            3,
+            514
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('PythonAgent_gpt4o', 'run_python', 0),)",
+          "action_name": "QuestionAgent_gpt4o",
+          "count": 4,
+          "unique_values": [
+            0.0,
+            1.0
+          ],
+          "min": 0.0,
+          "max": 1.0,
+          "range": 1.0,
+          "record_indices": [
+            282,
+            288,
+            326,
+            332
+          ]
+        }
+      ]
+    },
+    "cost": {
+      "signature_count": 250,
+      "repeated_signature_count": 80,
+      "conflicting_signature_count": 52,
+      "conflicting_signature_ratio": 0.65,
+      "conflicting_record_count": 454,
+      "conflicting_record_ratio": 0.5888456549935149,
+      "range_stats": {
+        "count": 52.0,
+        "mean": 0.045819128741175094,
+        "std": 0.033742767199795354,
+        "min": 0.0014432158008478302,
+        "max": 0.13226799404237022,
+        "p25": 0.01554862292325404,
+        "p50": 0.04121139039439653,
+        "p75": 0.059498340995759486
+      },
+      "examples": [
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('PythonAgent_gpt4o', 'run_python', 0),)",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 42,
+          "unique_values": [
+            0.792017,
+            0.813965,
+            0.823788,
+            0.824172,
+            0.825377,
+            0.82819,
+            0.831206,
+            0.832679,
+            0.83611,
+            0.838412,
+            0.839521,
+            0.840829
+          ],
+          "min": 0.7920174494315254,
+          "max": 0.9242854434738956,
+          "range": 0.13226799404237022,
+          "record_indices": [
+            122,
+            128,
+            132,
+            236,
+            242,
+            254,
+            260,
+            265,
+            269,
+            370,
+            409,
+            413,
+            420,
+            432,
+            437,
+            442,
+            446,
+            546,
+            551,
+            558
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 81,
+          "unique_values": [
+            0.802138,
+            0.803395,
+            0.804917,
+            0.806627,
+            0.810495,
+            0.811111,
+            0.813117,
+            0.813415,
+            0.817629,
+            0.818754,
+            0.825409,
+            0.826055
+          ],
+          "min": 0.8021382912658693,
+          "max": 0.9321231444640629,
+          "range": 0.12998485319819353,
+          "record_indices": [
+            6,
+            19,
+            25,
+            31,
+            37,
+            42,
+            54,
+            57,
+            60,
+            64,
+            68,
+            72,
+            75,
+            80,
+            83,
+            85,
+            88,
+            94,
+            112,
+            118
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "PythonAgent_gpt4o",
+          "count": 51,
+          "unique_values": [
+            0.741585,
+            0.74428,
+            0.748414,
+            0.754778,
+            0.755352,
+            0.756673,
+            0.758542,
+            0.760114,
+            0.760186,
+            0.760955,
+            0.761114,
+            0.779163
+          ],
+          "min": 0.74158464531473,
+          "max": 0.8622912799993663,
+          "range": 0.12070663468463627,
+          "record_indices": [
+            121,
+            127,
+            131,
+            235,
+            241,
+            245,
+            253,
+            259,
+            264,
+            268,
+            271,
+            277,
+            281,
+            287,
+            317,
+            321,
+            325,
+            331,
+            369,
+            408
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "TavilyAgent",
+          "count": 23,
+          "unique_values": [
+            0.77437,
+            0.792771,
+            0.799247,
+            0.80197,
+            0.808911,
+            0.810505,
+            0.826624,
+            0.827306,
+            0.828402,
+            0.830482,
+            0.834115,
+            0.841063
+          ],
+          "min": 0.7743697995080618,
+          "max": 0.8944048585378924,
+          "range": 0.12003505902983058,
+          "record_indices": [
+            0,
+            16,
+            28,
+            34,
+            78,
+            91,
+            145,
+            161,
+            179,
+            210,
+            345,
+            357,
+            363,
+            453,
+            481,
+            508,
+            520,
+            523,
+            536,
+            596
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "FileAgent",
+          "count": 14,
+          "unique_values": [
+            0.78307,
+            0.807295,
+            0.813216,
+            0.833771,
+            0.834673,
+            0.844124,
+            0.866519,
+            0.870534,
+            0.882121
+          ],
+          "min": 0.7830697931962791,
+          "max": 0.8821207293663225,
+          "range": 0.09905093617004335,
+          "record_indices": [
+            9,
+            96,
+            101,
+            106,
+            137,
+            148,
+            153,
+            172,
+            202,
+            474,
+            484,
+            578,
+            641,
+            650
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('PlannerAgent_gpt4o', 'planning', 1),)",
+          "action_name": "PythonAgent_gpt4o",
+          "count": 5,
+          "unique_values": [
+            0.757587,
+            0.784627,
+            0.848877
+          ],
+          "min": 0.757587276838833,
+          "max": 0.8488770813046711,
+          "range": 0.09128980446583812,
+          "record_indices": [
+            192,
+            216,
+            227,
+            751,
+            755
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('PythonAgent_gpt4o', 'run_python', 0), ('PythonAgent_gpt4o', 'run_python', 0))",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 3,
+          "unique_values": [
+            0.823794,
+            0.832108,
+            0.913334
+          ],
+          "min": 0.8237939301497932,
+          "max": 0.9133342193533042,
+          "range": 0.08954028920351098,
+          "record_indices": [
+            247,
+            273,
+            319
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('TavilyAgent', 'search_tavily', 1),)",
+          "action_name": "ConcluderAgent_gpt4o",
+          "count": 6,
+          "unique_values": [
+            0.814768,
+            0.828035,
+            0.847218,
+            0.863303,
+            0.894699
+          ],
+          "min": 0.8147681774186625,
+          "max": 0.8946987190295936,
+          "range": 0.07993054161093116,
+          "record_indices": [
+            17,
+            211,
+            454,
+            482,
+            509,
+            524
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "ArxivAgent",
+          "count": 8,
+          "unique_values": [
+            0.841705,
+            0.860789,
+            0.900942,
+            0.901262,
+            0.910727,
+            0.9117,
+            0.919967
+          ],
+          "min": 0.8417053308032517,
+          "max": 0.919967345742079,
+          "range": 0.07826201493882723,
+          "record_indices": [
+            13,
+            141,
+            157,
+            164,
+            176,
+            206,
+            478,
+            694
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('PythonAgent_gpt4o', 'run_python', 0),)",
+          "action_name": "PythonAgent_gpt4o",
+          "count": 3,
+          "unique_values": [
+            0.803848,
+            0.811686,
+            0.876807
+          ],
+          "min": 0.8038480595050271,
+          "max": 0.8768066711896313,
+          "range": 0.07295861168460416,
+          "record_indices": [
+            246,
+            272,
+            318
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('WebsiteAgent', 'access_website', 1),)",
+          "action_name": "ConcluderAgent_gpt4o",
+          "count": 2,
+          "unique_values": [
+            0.800638,
+            0.872309
+          ],
+          "min": 0.8006384211520464,
+          "max": 0.8723090912709017,
+          "range": 0.0716706701188553,
+          "record_indices": [
+            4,
+            515
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('FileAgent', 'read_file', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1))",
+          "action_name": "ConcluderAgent_gpt4o",
+          "count": 5,
+          "unique_values": [
+            0.809153,
+            0.811441,
+            0.83444,
+            0.838625,
+            0.876334
+          ],
+          "min": 0.8091530333358121,
+          "max": 0.8763341320940685,
+          "range": 0.0671810987582564,
+          "record_indices": [
+            11,
+            139,
+            155,
+            204,
+            476
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('FileAgent', 'read_file', 0),)",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 5,
+          "unique_values": [
+            0.825695,
+            0.829335,
+            0.849031,
+            0.873463,
+            0.885989
+          ],
+          "min": 0.8256954637732221,
+          "max": 0.8859886455404189,
+          "range": 0.06029318176719678,
+          "record_indices": [
+            10,
+            138,
+            154,
+            203,
+            475
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('FileAgent', 'read_file', 0),)",
+          "action_name": "TavilyAgent",
+          "count": 3,
+          "unique_values": [
+            0.818506,
+            0.852382,
+            0.877739
+          ],
+          "min": 0.8185056756992551,
+          "max": 0.8777390697712022,
+          "range": 0.059233394071947054,
+          "record_indices": [
+            107,
+            485,
+            642
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('TavilyAgent', 'search_tavily', 1),)",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 10,
+          "unique_values": [
+            0.829425,
+            0.833282,
+            0.837545,
+            0.839734,
+            0.845906,
+            0.849381,
+            0.849548,
+            0.8501,
+            0.870629,
+            0.888584
+          ],
+          "min": 0.8294254264263471,
+          "max": 0.8885841594485945,
+          "range": 0.05915873302224739,
+          "record_indices": [
+            1,
+            35,
+            92,
+            146,
+            162,
+            180,
+            521,
+            537,
+            603,
+            637
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "QuestionAgent_gpt4o",
+          "count": 18,
+          "unique_values": [
+            0.842549,
+            0.853907,
+            0.854455,
+            0.858239,
+            0.868635,
+            0.875791,
+            0.877069,
+            0.878151,
+            0.879748,
+            0.883293,
+            0.890498,
+            0.900012
+          ],
+          "min": 0.8425492935870901,
+          "max": 0.9000118807177032,
+          "range": 0.05746258713061314,
+          "record_indices": [
+            22,
+            39,
+            50,
+            115,
+            186,
+            197,
+            221,
+            292,
+            300,
+            376,
+            383,
+            472,
+            491,
+            500,
+            505,
+            572,
+            582,
+            669
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('FileAgent', 'read_file', 0), ('TavilyAgent', 'search_tavily', 1))",
+          "action_name": "ConcluderAgent_gpt4o",
+          "count": 2,
+          "unique_values": [
+            0.820006,
+            0.875624
+          ],
+          "min": 0.8200062857217938,
+          "max": 0.8756239608607275,
+          "range": 0.055617675138933675,
+          "record_indices": [
+            108,
+            486
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('PlannerAgent_gpt4o', 'planning', 1),)",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 3,
+          "unique_values": [
+            0.81063,
+            0.813327,
+            0.865161
+          ],
+          "min": 0.8106299729992497,
+          "max": 0.8651613822236978,
+          "range": 0.0545314092244481,
+          "record_indices": [
+            46,
+            184,
+            496
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('PythonAgent_gpt4o', 'run_python', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1))",
+          "action_name": "CriticAgent_gpt4o",
+          "count": 10,
+          "unique_values": [
+            0.837899,
+            0.842093,
+            0.848514,
+            0.853801,
+            0.866762,
+            0.867335,
+            0.887627,
+            0.892266
+          ],
+          "min": 0.837898531193389,
+          "max": 0.8922657266953538,
+          "range": 0.05436719550196478,
+          "record_indices": [
+            266,
+            433,
+            438,
+            443,
+            552,
+            613,
+            663,
+            678,
+            712,
+            765
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('PythonAgent_gpt4o', 'run_python', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1))",
+          "action_name": "PythonAgent_gpt4o",
+          "count": 4,
+          "unique_values": [
+            0.764159,
+            0.794847,
+            0.810523,
+            0.81266
+          ],
+          "min": 0.7641593779666185,
+          "max": 0.8126598178227846,
+          "range": 0.048500439856166144,
+          "record_indices": [
+            261,
+            559,
+            667,
+            707
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('ArxivAgent', 'search_arxiv', 1),)",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 3,
+          "unique_values": [
+            0.823166,
+            0.862532,
+            0.87019
+          ],
+          "min": 0.8231656816448079,
+          "max": 0.8701895068904084,
+          "range": 0.04702382524560056,
+          "record_indices": [
+            142,
+            158,
+            479
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('PythonAgent_gpt4o', 'run_python', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1))",
+          "action_name": "ConcluderAgent_gpt4o",
+          "count": 14,
+          "unique_values": [
+            0.795008,
+            0.808299,
+            0.815546,
+            0.817164,
+            0.817422,
+            0.818201,
+            0.819029,
+            0.819976,
+            0.821754,
+            0.824514,
+            0.828976,
+            0.82937
+          ],
+          "min": 0.7950078983404955,
+          "max": 0.8409019873307518,
+          "range": 0.045894088990256376,
+          "record_indices": [
+            129,
+            243,
+            371,
+            410,
+            414,
+            447,
+            625,
+            657,
+            682,
+            719,
+            723,
+            727,
+            733,
+            769
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('ArxivAgent', 'search_arxiv', 1),)",
+          "action_name": "PythonAgent_gpt4o",
+          "count": 3,
+          "unique_values": [
+            0.749826,
+            0.786665,
+            0.793206
+          ],
+          "min": 0.7498260577183886,
+          "max": 0.7932060417486084,
+          "range": 0.04337998403021981,
+          "record_indices": [
+            165,
+            177,
+            695
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('PlannerAgent_gpt4o', 'planning', 1), ('PythonAgent_gpt4o', 'run_python', 0), ('PlannerAgent_gpt4o', 'planning', 1))",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 2,
+          "unique_values": [
+            0.816428,
+            0.85962
+          ],
+          "min": 0.81642849309638,
+          "max": 0.8596195613434787,
+          "range": 0.04319106824709873,
+          "record_indices": [
+            194,
+            218
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('QuestionAgent_gpt4o', 'question', 1), ('PythonAgent_gpt4o', 'run_python', 0))",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 5,
+          "unique_values": [
+            0.809684,
+            0.820925,
+            0.83084,
+            0.838156,
+            0.852679
+          ],
+          "min": 0.8096835865672124,
+          "max": 0.8526793722209225,
+          "range": 0.042995785653710095,
+          "record_indices": [
+            188,
+            223,
+            302,
+            584,
+            671
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('QuestionAgent_gpt4o', 'question', 1),)",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 4,
+          "unique_values": [
+            0.801469,
+            0.837627,
+            0.84336
+          ],
+          "min": 0.8014693143553915,
+          "max": 0.8433604074301407,
+          "range": 0.04189109307474925,
+          "record_indices": [
+            293,
+            377,
+            384,
+            506
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1),)",
+          "action_name": "CriticAgent_gpt4o",
+          "count": 23,
+          "unique_values": [
+            0.850097,
+            0.85033,
+            0.853888,
+            0.853917,
+            0.855016,
+            0.856925,
+            0.860992,
+            0.863405,
+            0.865651,
+            0.866653,
+            0.866833,
+            0.868439
+          ],
+          "min": 0.8500965142256526,
+          "max": 0.8906282019396964,
+          "range": 0.04053168771404381,
+          "record_indices": [
+            7,
+            32,
+            81,
+            89,
+            113,
+            125,
+            239,
+            257,
+            298,
+            310,
+            417,
+            429,
+            450,
+            460,
+            464,
+            470,
+            530,
+            543,
+            555,
+            587
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('PythonAgent_gpt4o', 'run_python', 0), ('ReasoningAgent_gpt4o', 'reasoning', 1))",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 3,
+          "unique_values": [
+            0.825991,
+            0.85634,
+            0.86488
+          ],
+          "min": 0.8259908370916167,
+          "max": 0.8648795349028829,
+          "range": 0.03888869781126625,
+          "record_indices": [
+            547,
+            567,
+            591
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1),)",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 4,
+          "unique_values": [
+            0.812851,
+            0.832285,
+            0.83386,
+            0.851229
+          ],
+          "min": 0.8128511852886625,
+          "max": 0.8512286280827237,
+          "range": 0.03837744279406119,
+          "record_indices": [
+            76,
+            533,
+            616,
+            739
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('FileAgent', 'read_file', 0), ('PythonAgent_gpt4o', 'run_python', 0))",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 3,
+          "unique_values": [
+            0.84185,
+            0.853621,
+            0.879833
+          ],
+          "min": 0.8418499882391625,
+          "max": 0.8798334845307016,
+          "range": 0.03798349629153919,
+          "record_indices": [
+            150,
+            174,
+            580
+          ]
+        }
+      ]
+    },
+    "uncertainty": {
+      "signature_count": 250,
+      "repeated_signature_count": 80,
+      "conflicting_signature_count": 1,
+      "conflicting_signature_ratio": 0.0125,
+      "conflicting_record_count": 8,
+      "conflicting_record_ratio": 0.010376134889753566,
+      "range_stats": {
+        "count": 1.0,
+        "mean": 1.0,
+        "std": 0.0,
+        "min": 1.0,
+        "max": 1.0,
+        "p25": 1.0,
+        "p50": 1.0,
+        "p75": 1.0
+      },
+      "examples": [
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "ArxivAgent",
+          "count": 8,
+          "unique_values": [
+            0.0,
+            1.0
+          ],
+          "min": 0.0,
+          "max": 1.0,
+          "range": 1.0,
+          "record_indices": [
+            13,
+            141,
+            157,
+            164,
+            176,
+            206,
+            478,
+            694
+          ]
+        }
+      ]
+    },
+    "counterfactual": {
+      "signature_count": 250,
+      "repeated_signature_count": 80,
+      "conflicting_signature_count": 9,
+      "conflicting_signature_ratio": 0.1125,
+      "conflicting_record_count": 209,
+      "conflicting_record_ratio": 0.2710765239948119,
+      "range_stats": {
+        "count": 9.0,
+        "mean": 1.8333333333333333,
+        "std": 1.0540925533894598,
+        "min": 0.5,
+        "max": 4.0,
+        "p25": 1.0,
+        "p50": 2.0,
+        "p75": 2.0
+      },
+      "examples": [
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "ReasoningAgent_gpt4o",
+          "count": 81,
+          "unique_values": [
+            -2.0,
+            0.0,
+            2.0
+          ],
+          "min": -2.0,
+          "max": 2.0,
+          "range": 4.0,
+          "record_indices": [
+            6,
+            19,
+            25,
+            31,
+            37,
+            42,
+            54,
+            57,
+            60,
+            64,
+            68,
+            72,
+            75,
+            80,
+            83,
+            85,
+            88,
+            94,
+            112,
+            118
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "QuestionAgent_gpt4o",
+          "count": 18,
+          "unique_values": [
+            -2.0,
+            0.0,
+            1.0
+          ],
+          "min": -2.0,
+          "max": 1.0,
+          "range": 3.0,
+          "record_indices": [
+            22,
+            39,
+            50,
+            115,
+            186,
+            197,
+            221,
+            292,
+            300,
+            376,
+            383,
+            472,
+            491,
+            500,
+            505,
+            572,
+            582,
+            669
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "TavilyAgent",
+          "count": 23,
+          "unique_values": [
+            0.0,
+            1.0,
+            2.0
+          ],
+          "min": 0.0,
+          "max": 2.0,
+          "range": 2.0,
+          "record_indices": [
+            0,
+            16,
+            28,
+            34,
+            78,
+            91,
+            145,
+            161,
+            179,
+            210,
+            345,
+            357,
+            363,
+            453,
+            481,
+            508,
+            520,
+            523,
+            536,
+            596
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "FileAgent",
+          "count": 14,
+          "unique_values": [
+            -2.0,
+            0.0
+          ],
+          "min": -2.0,
+          "max": 0.0,
+          "range": 2.0,
+          "record_indices": [
+            9,
+            96,
+            101,
+            106,
+            137,
+            148,
+            153,
+            172,
+            202,
+            474,
+            484,
+            578,
+            641,
+            650
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('ReasoningAgent_gpt4o', 'reasoning', 1),)",
+          "action_name": "TavilyAgent",
+          "count": 7,
+          "unique_values": [
+            -2.0,
+            0.0
+          ],
+          "min": -2.0,
+          "max": 0.0,
+          "range": 2.0,
+          "record_indices": [
+            26,
+            43,
+            352,
+            389,
+            397,
+            403,
+            457
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "PythonAgent_gpt4o",
+          "count": 51,
+          "unique_values": [
+            0.0,
+            1.0
+          ],
+          "min": 0.0,
+          "max": 1.0,
+          "range": 1.0,
+          "record_indices": [
+            121,
+            127,
+            131,
+            235,
+            241,
+            245,
+            253,
+            259,
+            264,
+            268,
+            271,
+            277,
+            281,
+            287,
+            317,
+            321,
+            325,
+            331,
+            369,
+            408
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "((None, None, -1),)",
+          "action_name": "ArxivAgent",
+          "count": 8,
+          "unique_values": [
+            0.0,
+            1.0
+          ],
+          "min": 0.0,
+          "max": 1.0,
+          "range": 1.0,
+          "record_indices": [
+            13,
+            141,
+            157,
+            164,
+            176,
+            206,
+            478,
+            694
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('PythonAgent_gpt4o', 'run_python', 0),)",
+          "action_name": "QuestionAgent_gpt4o",
+          "count": 4,
+          "unique_values": [
+            -1.0,
+            0.0
+          ],
+          "min": -1.0,
+          "max": 0.0,
+          "range": 1.0,
+          "record_indices": [
+            282,
+            288,
+            326,
+            332
+          ]
+        },
+        {
+          "task_type": "MMLU-Pro",
+          "workflow_state": "(('PythonAgent_gpt4o', 'run_python', 0),)",
+          "action_name": "PythonAgent_gpt4o",
+          "count": 3,
+          "unique_values": [
+            0.0,
+            0.5
+          ],
+          "min": 0.0,
+          "max": 0.5,
+          "range": 0.5,
+          "record_indices": [
+            246,
+            272,
+            318
+          ]
+        }
+      ]
+    },
+    "done": {
+      "signature_count": 250,
+      "repeated_signature_count": 80,
+      "conflicting_signature_count": 0,
+      "conflicting_signature_ratio": 0.0,
+      "conflicting_record_count": 0,
+      "conflicting_record_ratio": 0.0,
+      "range_stats": {
+        "count": 0.0,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "p25": 0.0,
+        "p50": 0.0,
+        "p75": 0.0
+      },
+      "examples": []
+    }
+  },
+  "warnings": [
+    "reward has high repeated-signature conflict ratio (383/771 = 49.68%).",
+    "value has high repeated-signature conflict ratio (383/771 = 49.68%).",
+    "cost has high repeated-signature conflict ratio (454/771 = 58.88%).",
+    "counterfactual has high repeated-signature conflict ratio (209/771 = 27.11%)."
+  ],
+  "source_files": [
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_120316.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_120614.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_131737.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_133035.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_141823.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_141950.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_151332.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_151501.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_151806.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_151922.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_153505.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_153654.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_155101.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_162823.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_163253.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_163413.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_163924.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_164446.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_164736.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_164850.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_181505.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_195723.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_195849.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_203930.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_210416.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_222533.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_231057.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_231230.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_231439.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_231637.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_231955.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_232110.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_232716.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_234424.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_003213.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_010717.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_010932.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_011042.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_011207.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_020500.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_020649.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_020741.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_021013.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_030800.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_030957.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_033048.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_045207.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_045355.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_045843.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_050100.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_050224.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_051219.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_051404.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_052058.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_052246.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_052434.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_052855.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_062821.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_063143.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_063322.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_065115.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_073229.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_074529.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_082358.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_083024.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_083234.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_083656.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_100020.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_101814.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_101907.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_102432.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_103050.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_104606.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_104736.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_104934.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_105111.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_105318.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_112630.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_112833.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_112945.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_113202.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_120429.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_121013.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_125010.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_125140.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_130713.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_130916.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_131058.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_131325.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_131708.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_134605.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_134801.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_135042.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_135310.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_135709.jsonl",
+    "results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260403_135948.jsonl"
+  ]
+}

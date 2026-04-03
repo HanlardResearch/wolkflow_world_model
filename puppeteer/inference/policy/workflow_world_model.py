@@ -33,13 +33,21 @@ def _default_loss_weights() -> Dict[str, float]:
         "kl": 0.05,
         "reward": 1.0,
         "cost": 0.5,
-        "done": 0.5,
-        "value": 0.5,
+        "done": 0.05,
+        "value": 0.25,
         "uncertainty": 0.25,
-        "valid": 0.25,
+        "valid": 0.05,
         "aux": 0.25,
-        "counterfactual": 0.5,
+        "counterfactual": 0.0,
     }
+
+
+def _default_value_bucket_edges() -> Tuple[float, ...]:
+    return (-0.75, -0.25, 0.25, 0.75)
+
+
+def _default_reward_bucket_edges() -> Tuple[float, ...]:
+    return (-0.5, 0.5)
 
 
 def _masked_mean(values: Tensor, mask: Tensor, dim: int) -> Tensor:
@@ -254,6 +262,18 @@ class WorkflowWorldModelConfig:
     stable_next_posterior_targets: bool = True
     normalize_kl_by_latent_dim: bool = True
     max_kl_per_sample: float = 5.0
+    normalize_latent_alignment: bool = True
+    latent_cosine_weight: float = 0.25
+    latent_logvar_weight: float = 0.1
+    latent_logvar_min: float = -6.0
+    latent_logvar_max: float = 2.0
+    bound_cost_output: bool = True
+    use_reward_buckets: bool = True
+    reward_bucket_edges: Tuple[float, ...] = field(default_factory=_default_reward_bucket_edges)
+    reward_bucket_label_smoothing: float = 0.02
+    use_value_buckets: bool = True
+    value_bucket_edges: Tuple[float, ...] = field(default_factory=_default_value_bucket_edges)
+    value_bucket_label_smoothing: float = 0.05
 
 
 @dataclass
@@ -363,9 +383,11 @@ class WorkflowWorldModelOutput:
     prior_logvar: Tensor
     prior_hidden_state: Tensor
     reward: Tensor
+    reward_logits: Optional[Tensor]
     cost: Tensor
     done_logits: Tensor
     value: Tensor
+    value_logits: Optional[Tensor]
     uncertainty: Tensor
     valid_action_logits: Tensor
     aux: Dict[str, Tensor]
@@ -568,15 +590,25 @@ class WorkflowWorldModel(nn.Module):
             nn.Linear(config.hidden_dim, config.latent_dim * 2),
         )
         head_dim = config.latent_dim + config.model_dim + config.hidden_dim
-        self.reward_head = MLP(head_dim, config.hidden_dim, 1, config.dropout)
+        if config.use_reward_buckets:
+            self.reward_head = MLP(head_dim, config.hidden_dim, len(config.reward_bucket_edges) + 1, config.dropout)
+        else:
+            self.reward_head = MLP(head_dim, config.hidden_dim, 1, config.dropout)
         self.cost_head = MLP(head_dim, config.hidden_dim, 1, config.dropout)
         self.done_head = MLP(head_dim, config.hidden_dim, 1, config.dropout)
-        self.value_head = MLP(head_dim, config.hidden_dim, 1, config.dropout)
+        if config.use_value_buckets:
+            self.value_head = MLP(head_dim, config.hidden_dim, len(config.value_bucket_edges) + 1, config.dropout)
+        else:
+            self.value_head = MLP(head_dim, config.hidden_dim, 1, config.dropout)
         self.uncertainty_head = MLP(head_dim, config.hidden_dim, 1, config.dropout)
         self.valid_head = MLP(config.latent_dim + config.model_dim, config.hidden_dim, config.num_actions, config.dropout)
         self.aux_heads = nn.ModuleDict(
             {name: MLP(head_dim, config.hidden_dim, 1, config.dropout) for name in config.aux_names}
         )
+        bucket_centers = self._build_value_bucket_centers(config.value_bucket_edges)
+        self.register_buffer("value_bucket_centers", torch.tensor(bucket_centers, dtype=torch.float32), persistent=False)
+        reward_bucket_centers = self._build_value_bucket_centers(config.reward_bucket_edges)
+        self.register_buffer("reward_bucket_centers", torch.tensor(reward_bucket_centers, dtype=torch.float32), persistent=False)
 
     @classmethod
     def from_adapter(
@@ -625,6 +657,71 @@ class WorkflowWorldModel(nn.Module):
         if max_kl > 0:
             kl_values = kl_values.clamp(max=max_kl)
         return kl_values.mean()
+
+    def _normalize_latent_for_alignment(self, latent: Tensor) -> Tensor:
+        if not self.config.normalize_latent_alignment:
+            return latent
+        return F.layer_norm(latent, (latent.shape[-1],))
+
+    def _latent_alignment_loss(self, prior_mean: Tensor, target_mean: Tensor) -> Tensor:
+        prior_view = self._normalize_latent_for_alignment(prior_mean)
+        target_view = self._normalize_latent_for_alignment(target_mean)
+        loss = F.smooth_l1_loss(prior_view, target_view)
+        cosine_weight = float(self.config.latent_cosine_weight)
+        if cosine_weight > 0:
+            cosine_loss = 1.0 - F.cosine_similarity(prior_view, target_view, dim=-1, eps=1.0e-8).mean()
+            loss = loss + cosine_weight * cosine_loss
+        return loss
+
+    def _cost_output(self, raw_cost: Tensor) -> Tensor:
+        if self.config.bound_cost_output:
+            return torch.sigmoid(raw_cost)
+        return raw_cost
+
+    @staticmethod
+    def _build_value_bucket_centers(edges: Sequence[float]) -> List[float]:
+        ordered = sorted(float(edge) for edge in edges)
+        boundaries = [-1.0] + ordered + [1.0]
+        centers: List[float] = []
+        for left, right in zip(boundaries[:-1], boundaries[1:]):
+            centers.append((left + right) * 0.5)
+        return centers
+
+    def _decode_value_output(self, raw_value: Tensor) -> Tuple[Tensor, Optional[Tensor]]:
+        if not self.config.use_value_buckets:
+            return raw_value.squeeze(-1), None
+        value_logits = raw_value
+        probabilities = torch.softmax(value_logits, dim=-1)
+        centers = self.value_bucket_centers.to(device=value_logits.device, dtype=value_logits.dtype)
+        value = (probabilities * centers.unsqueeze(0)).sum(dim=-1)
+        return value, value_logits
+
+    def _decode_reward_output(self, raw_reward: Tensor) -> Tuple[Tensor, Optional[Tensor]]:
+        if not self.config.use_reward_buckets:
+            return raw_reward.squeeze(-1), None
+        reward_logits = raw_reward
+        probabilities = torch.softmax(reward_logits, dim=-1)
+        centers = self.reward_bucket_centers.to(device=reward_logits.device, dtype=reward_logits.dtype)
+        reward = (probabilities * centers.unsqueeze(0)).sum(dim=-1)
+        return reward, reward_logits
+
+    def _value_bucket_targets(self, target_value: Tensor) -> Tensor:
+        edges = torch.tensor(
+            list(self.config.value_bucket_edges),
+            device=target_value.device,
+            dtype=target_value.dtype,
+        )
+        clipped = target_value.clamp(min=-1.0, max=1.0)
+        return torch.bucketize(clipped, edges)
+
+    def _reward_bucket_targets(self, target_reward: Tensor) -> Tensor:
+        edges = torch.tensor(
+            list(self.config.reward_bucket_edges),
+            device=target_reward.device,
+            dtype=target_reward.dtype,
+        )
+        clipped = target_reward.clamp(min=-1.0, max=1.0)
+        return torch.bucketize(clipped, edges)
 
     def encode_action(self, kind_ids: Tensor, name_ids: Tensor, features: Tensor) -> Tensor:
         # 动作编码包含动作类型、动作名和少量数值特征。
@@ -724,7 +821,10 @@ class WorkflowWorldModel(nn.Module):
         )
         next_hidden = torch.tanh(self.hidden_adapter(torch.cat([fused, hidden_state], dim=-1)))
         post_mean, post_logvar = self.posterior_head(fused).chunk(2, dim=-1)
-        post_logvar = post_logvar.clamp(min=-8.0, max=8.0)
+        post_logvar = post_logvar.clamp(
+            min=self.config.latent_logvar_min,
+            max=self.config.latent_logvar_max,
+        )
         latent = self._sample_latent(post_mean, post_logvar, sample=sample_latent)
         return latent, post_mean, post_logvar, next_hidden, graph_repr
 
@@ -744,10 +844,15 @@ class WorkflowWorldModel(nn.Module):
         transition_input = self.transition_input(torch.cat([latent, action_repr, graph_repr], dim=-1))
         prior_hidden = self.transition_cell(transition_input, hidden_state)
         prior_mean, prior_logvar = self.prior_head(torch.cat([prior_hidden, graph_repr], dim=-1)).chunk(2, dim=-1)
-        prior_logvar = prior_logvar.clamp(min=-8.0, max=8.0)
+        prior_logvar = prior_logvar.clamp(
+            min=self.config.latent_logvar_min,
+            max=self.config.latent_logvar_max,
+        )
         head_input = torch.cat([prior_mean, graph_repr, prior_hidden], dim=-1)
         # 辅助头提供更密集的中间监督，例如 coverage / conflict / readiness。
         aux = {name: head(head_input).squeeze(-1) for name, head in self.aux_heads.items()}
+        reward, reward_logits = self._decode_reward_output(self.reward_head(head_input))
+        value, value_logits = self._decode_value_output(self.value_head(head_input))
         return WorkflowWorldModelOutput(
             latent=latent,
             latent_mean=post_mean,
@@ -758,10 +863,12 @@ class WorkflowWorldModel(nn.Module):
             prior_mean=prior_mean,
             prior_logvar=prior_logvar,
             prior_hidden_state=prior_hidden,
-            reward=self.reward_head(head_input).squeeze(-1),
-            cost=self.cost_head(head_input).squeeze(-1),
+            reward=reward,
+            reward_logits=reward_logits,
+            cost=self._cost_output(self.cost_head(head_input).squeeze(-1)),
             done_logits=self.done_head(head_input).squeeze(-1),
-            value=self.value_head(head_input).squeeze(-1),
+            value=value,
+            value_logits=value_logits,
             uncertainty=F.softplus(self.uncertainty_head(head_input).squeeze(-1)),
             valid_action_logits=self.valid_head(torch.cat([prior_mean, graph_repr], dim=-1)),
             aux=aux,
@@ -785,10 +892,10 @@ class WorkflowWorldModel(nn.Module):
             current_hidden = self.transition_cell(transition_input, current_hidden)
             prior_mean, prior_logvar = self.prior_head(torch.cat([current_hidden, graph_embedding], dim=-1)).chunk(2, dim=-1)
             head_input = torch.cat([prior_mean, graph_embedding, current_hidden], dim=-1)
-            reward = self.reward_head(head_input).squeeze(-1)
-            cost = self.cost_head(head_input).squeeze(-1)
+            reward, _ = self._decode_reward_output(self.reward_head(head_input))
+            cost = self._cost_output(self.cost_head(head_input).squeeze(-1))
             uncertainty = F.softplus(self.uncertainty_head(head_input).squeeze(-1))
-            value = self.value_head(head_input).squeeze(-1)
+            value, _ = self._decode_value_output(self.value_head(head_input))
             running_return = running_return + (gamma**step_index) * (reward - cost)
             rollout.append(
                 {
@@ -824,7 +931,9 @@ class WorkflowWorldModel(nn.Module):
 
         if next_batch is not None:
             next_mean, next_logvar = self._encode_transition_target(next_batch)
-            losses["latent"] = F.smooth_l1_loss(output.prior_mean, next_mean)
+            losses["latent"] = self._latent_alignment_loss(output.prior_mean, next_mean)
+            if float(self.config.latent_logvar_weight) > 0:
+                losses["latent_logvar"] = F.smooth_l1_loss(output.prior_logvar, next_logvar)
             losses["kl"] = self._reduce_kl_loss(
                 _gaussian_kl(
                     next_mean,
@@ -834,13 +943,20 @@ class WorkflowWorldModel(nn.Module):
                 )
             )
             losses["total"] = losses["total"] + weights["latent"] * losses["latent"] + weights["kl"] * losses["kl"]
+            if "latent_logvar" in losses:
+                losses["total"] = losses["total"] + float(self.config.latent_logvar_weight) * losses["latent_logvar"]
 
         targets = batch.targets
         if targets is None:
             return losses
 
         if targets.reward is not None:
-            losses["reward"] = F.smooth_l1_loss(output.reward, targets.reward)
+            if self.config.use_reward_buckets and output.reward_logits is not None:
+                reward_targets = self._reward_bucket_targets(targets.reward)
+                smoothing = float(self.config.reward_bucket_label_smoothing)
+                losses["reward"] = F.cross_entropy(output.reward_logits, reward_targets, label_smoothing=smoothing)
+            else:
+                losses["reward"] = F.smooth_l1_loss(output.reward, targets.reward)
             losses["total"] = losses["total"] + weights["reward"] * losses["reward"]
         if targets.cost is not None:
             losses["cost"] = F.smooth_l1_loss(output.cost, targets.cost)
@@ -849,7 +965,12 @@ class WorkflowWorldModel(nn.Module):
             losses["done"] = F.binary_cross_entropy_with_logits(output.done_logits, targets.done.float())
             losses["total"] = losses["total"] + weights["done"] * losses["done"]
         if targets.value is not None:
-            losses["value"] = F.smooth_l1_loss(output.value, targets.value)
+            if self.config.use_value_buckets and output.value_logits is not None:
+                value_targets = self._value_bucket_targets(targets.value)
+                smoothing = float(self.config.value_bucket_label_smoothing)
+                losses["value"] = F.cross_entropy(output.value_logits, value_targets, label_smoothing=smoothing)
+            else:
+                losses["value"] = F.smooth_l1_loss(output.value, targets.value)
             losses["total"] = losses["total"] + weights["value"] * losses["value"]
         if targets.uncertainty is not None:
             losses["uncertainty"] = F.smooth_l1_loss(output.uncertainty, targets.uncertainty)
@@ -868,7 +989,7 @@ class WorkflowWorldModel(nn.Module):
                 losses["total"] = losses["total"] + weights["aux"] * losses["aux"]
 
         counterfactual_targets = targets.counterfactual_credit if counterfactual_targets is None else counterfactual_targets
-        if counterfactual_targets is not None:
+        if counterfactual_targets is not None and float(weights.get("counterfactual", 0.0)) > 0:
             # 反事实监督同时做数值拟合和排序拟合，方便后续做 rerank/credit。
             q_values = self.q_value(output)
             cf_reg = F.smooth_l1_loss(q_values, counterfactual_targets)

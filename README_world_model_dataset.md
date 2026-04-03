@@ -591,3 +591,125 @@ step_t
 1. 不要把 `episode` 理解成“单个 step”。
 2. 也不要把 `episode` 理解成“单条 path”。
 3. 更准确的理解是：`episode` 是“同一道题及其所有并行/分支探索路径”的共同任务单元。
+
+
+## 附录：Reward/Value 特征审计
+
+本附录基于一个真实样本记录，对当前世界模型的特征流水线进行交叉核对：
+`puppeteer/results/world_model_dataset-llm/MMLU-Pro/test/workflow_world_model_20260402_120316.jsonl`。
+
+目标是回答三个问题：
+
+1. 当前哪些字段被用于预测 `reward` 和 `value`？
+2. 原始数据集中存在哪些字段，但尚未被使用？
+3. 哪些未使用字段值得优先纳入？
+
+### A. 当前已使用的输入特征
+
+在当前 `WorkflowWorldModel` 编码器栈中，以下字段已经被用于预测 `reward` 和 `value`。
+
+| 来源                        | 字段                      | 当前是否使用    | 说明                 |
+| ------------------------- | ----------------------- | --------- | ------------------ |
+| `task`                    | `type`                  | Yes       | 编码为任务类型/类别。        |
+| `task`                    | `Question` / `question` | Yes       | 通过文本统计特征或文本编码器使用。  |
+| `state`                   | `workflow_state`        | Yes       | 核心符号状态签名。          |
+| `state.executed_steps[*]` | `agent`                 | Yes       | 序列编码器输入。           |
+| `state.executed_steps[*]` | `action`                | Yes       | 序列编码器输入。           |
+| `state.executed_steps[*]` | `success`               | Yes       | 步级数值特征。            |
+| `state.executed_steps[*]` | `tokens`                | Yes       | 步级数值特征。            |
+| `state.executed_steps[*]` | `cost`                  | Yes       | 步级数值特征。            |
+| `state.executed_steps[*]` | `parameter`             | Partially | 目前仅使用了类似长度这样的浅层特征。 |
+| `state.executed_steps[*]` | `answer_summary`        | Partially | 主要使用长度/存在性这类特征。    |
+| `state.executed_steps[*]` | `step_data_summary`     | Partially | 主要使用长度/存在性这类特征。    |
+| `state`                   | `recent_answers`        | Yes       | 证据/文本集合编码器输入。      |
+| `state`                   | `reasoning_results`     | Yes       | 证据/文本集合编码器输入。      |
+| `state`                   | `tool_results`          | Yes       | 证据/文本集合编码器输入。      |
+| `state.budget`            | `step_index`            | Yes       | 预算特征。              |
+| `state.budget`            | `used_tokens`           | Yes       | 预算特征。              |
+| `state.budget`            | `used_cost`             | Yes       | 预算特征。              |
+| `graph`                   | `nodes`                 | Yes       | 图编码器输入。            |
+| `graph`                   | `edges`                 | Yes       | 图编码器输入。            |
+| `graph.node_stats[*]`     | `success_rate`          | Yes       | 节点数值特征。            |
+| `graph.node_stats[*]`     | `avg_cost`              | Yes       | 节点数值特征。            |
+| `graph.node_stats[*]`     | `avg_credit`            | Yes       | 节点数值特征。            |
+| `graph.node_stats[*]`     | `usage_count`           | Yes       | 节点数值特征。            |
+| `action`                  | `kind`                  | Yes       | 动作编码器输入。           |
+| `action`                  | `name`                  | Yes       | 动作编码器输入。           |
+| `action`                  | `estimated_cost`        | Yes       | 动作数值特征。            |
+| 顶层回退字段                    | `total_tokens`          | Yes       | 在 budget 字段缺失时使用。  |
+| 顶层回退字段                    | `total_cost`            | Yes       | 在 budget 字段缺失时使用。  |
+
+### B. 作为监督目标使用，而非作为输入
+
+以下字段被有意设计为监督目标，而不是模型输入。
+
+| 字段                                         | 当前角色                |
+| ------------------------------------------ | ------------------- |
+| `outcome.reward`                           | `reward` 目标         |
+| `outcome.cost_delta`                       | `cost` 目标           |
+| `outcome.done`                             | `done` 目标           |
+| `returns.mc_return`                        | `value` 目标          |
+| `next_state_targets.conflict_score`        | `uncertainty` 目标    |
+| `next_state_targets.progress_score`        | 辅助目标                |
+| `next_state_targets.coverage_score`        | 辅助目标                |
+| `next_state_targets.redundancy_score`      | 辅助目标                |
+| `next_state_targets.termination_readiness` | 辅助目标                |
+| `next_state_targets.valid_action_mask`     | `valid` 目标          |
+| `credit_targets.leave_one_out_gap`         | `counterfactual` 目标 |
+
+### C. 在原始 JSONL 中存在但尚未使用的字段
+
+已在真实样本记录中确认以下字段存在，但当前尚未作为模型输入使用。
+
+| 来源                    | 字段                       | 是否应直接使用？                 | 重要性说明                                  |
+| --------------------- | ------------------------ | ------------------------ | -------------------------------------- |
+| 顶层                    | `path_id`                | Possibly                 | 有助于区分同一 episode 中的兄弟搜索分支。              |
+| 顶层                    | `t`                      | Possibly                 | 显式步索引，不依赖重构历史。                         |
+| `task`                | `id`                     | Yes                      | 可作为稳定的样本/题目标识符，用于诊断或数据划分控制。            |
+| `task`                | `Answer`                 | No                       | 这会在训练输入中造成标签泄漏。                        |
+| `state`               | `all_actions`            | Possibly                 | 可能有助于反映已探索的动作历史。                       |
+| `state`               | `valid_actions`          | Not needed now           | 与当前 valid-mask 监督高度重叠，而且通常接近常量。        |
+| `state`               | `workflow_valid_actions` | Yes                      | 比通用 valid list 更具体地反映工作流层面的可行动作可用性。    |
+| `state`               | `path_id`                | Possibly                 | 可用于识别分支局部上下文。                          |
+| `action`              | `selected_confidence`    | Yes                      | 是预测所选动作是否可信的强候选特征。                     |
+| `action`              | `candidate_agents`       | Yes                      | 编码的是局部决策前沿，而不仅仅是已选动作。                  |
+| `graph.node_stats[*]` | `avg_reward`             | Yes                      | 直接反映每个节点历史动作质量。                        |
+| `outcome`             | `token_delta`            | No for online prediction | 属于未来信息；仅适合分析，不应作为当前步输入。                |
+| `outcome`             | `success`                | No for online prediction | 属于未来信息；会泄漏标签/结果。                       |
+| `returns`             | `h2_return`              | Yes                      | 较短视野的 return 目标可能比完整 `mc_return` 更易学习。 |
+| `credit_targets`      | `step_credit`            | Yes                      | 可能比稀疏的 `leave_one_out_gap` 更有信息量。      |
+| `metadata`            | `action_parameter`       | Yes                      | 比当前仅用长度处理 step parameters 丰富得多。        |
+| `metadata`            | `result_summary`         | Yes                      | 很可能包含区分许多冲突样本的语义信号。                    |
+| `metadata`            | `answer_summary`         | Yes                      | 比仅使用浅层长度特征更能直接反映 answer-state 信号。      |
+| `metadata`            | `tree_parent_value`      | Possibly                 | 可作为 planner/tree-search 的先验特征。         |
+| `metadata`            | `tree_action_value`      | Possibly                 | 可作为 planner/tree-search 的先验特征。         |
+| `metadata`            | `tree_sibling_baseline`  | Possibly                 | 有助于将所选分支与其他候选分支进行比较。                   |
+| `metadata`            | `tree_descendant_leaves` | Possibly                 | 编码局部搜索深度/分支支持信息。                       |
+| `metadata`            | `tree_leaf_reward`       | No for online prediction | 这本质上属于未来结果信息。                          |
+| `metadata`            | `metrics`                | Case by case             | 需要检查 schema；其中可能包含有用的结构化诊断信息。          |
+
+### D. 最高优先级的缺失特征
+
+基于冲突分析和真实 JSONL 样本，最有潜力补充进来的输入特征包括：
+
+1. `action.selected_confidence`
+2. `action.candidate_agents`
+3. `metadata.action_parameter`
+4. `metadata.result_summary`
+5. `metadata.answer_summary`
+6. `graph.node_stats[*].avg_reward`
+7. 将 `returns.h2_return` 作为额外的、更易学习的目标
+8. 将 `credit_targets.step_credit` 作为比稀疏反事实标签更好的替代项
+
+### E. 核心结论
+
+当前模型并不是缺失了所有特征。它已经使用了任务、状态、历史、证据、图结构、预算和动作信息。
+
+当前的主要缺口其实更集中：一些很可能能够区分冲突性 `reward` / `value` 样本的字段仍然：
+
+* 完全没有被使用，或
+* 仅被简化为较弱的浅层特征，例如文本长度 / 存在标记。
+
+这很可能正是 `cost` 和 `uncertainty` 学得较好，而 `reward` 和 `value` 在当前可观测状态定义下仍然存在严重标签冲突的主要原因。
+
+

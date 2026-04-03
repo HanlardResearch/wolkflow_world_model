@@ -58,6 +58,64 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--gradient-clip", type=float, default=1.0)
     parser.add_argument(
+        "--value-loss-weight",
+        type=float,
+        default=0.25,
+        help="Loss weight for the value head.",
+    )
+    parser.add_argument(
+        "--disable-reward-buckets",
+        action="store_true",
+        help="Use scalar reward regression instead of bucketed reward classification.",
+    )
+    parser.add_argument(
+        "--reward-bucket-edges",
+        type=str,
+        default="-0.5,0.5",
+        help="Comma-separated sorted bucket edges used when reward bucket classification is enabled.",
+    )
+    parser.add_argument(
+        "--reward-bucket-label-smoothing",
+        type=float,
+        default=0.02,
+        help="Label smoothing used by the reward bucket classification loss.",
+    )
+    parser.add_argument(
+        "--disable-value-buckets",
+        action="store_true",
+        help="Use scalar value regression instead of bucketed value classification.",
+    )
+    parser.add_argument(
+        "--value-bucket-edges",
+        type=str,
+        default="-0.75,-0.25,0.25,0.75",
+        help="Comma-separated sorted bucket edges used when value bucket classification is enabled.",
+    )
+    parser.add_argument(
+        "--value-bucket-label-smoothing",
+        type=float,
+        default=0.05,
+        help="Label smoothing used by the value bucket classification loss.",
+    )
+    parser.add_argument(
+        "--done-loss-weight",
+        type=float,
+        default=0.05,
+        help="Loss weight for the done head.",
+    )
+    parser.add_argument(
+        "--valid-loss-weight",
+        type=float,
+        default=0.05,
+        help="Loss weight for the valid-action head.",
+    )
+    parser.add_argument(
+        "--counterfactual-loss-weight",
+        type=float,
+        default=0.0,
+        help="Loss weight for the counterfactual/Q head.",
+    )
+    parser.add_argument(
         "--kl-max-per-sample",
         type=float,
         default=5.0,
@@ -72,6 +130,40 @@ def parse_args() -> argparse.Namespace:
         "--disable-kl-dim-normalization",
         action="store_true",
         help="Optimize KL as a sum over latent dimensions instead of a per-dimension average.",
+    )
+    parser.add_argument(
+        "--disable-latent-loss-normalization",
+        action="store_true",
+        help="Align latent means in raw coordinates instead of layer-normalized coordinates.",
+    )
+    parser.add_argument(
+        "--latent-cosine-weight",
+        type=float,
+        default=0.25,
+        help="Additional cosine-direction penalty mixed into the latent alignment loss.",
+    )
+    parser.add_argument(
+        "--latent-logvar-weight",
+        type=float,
+        default=0.1,
+        help="Weight for explicit prior/posterior log-variance matching.",
+    )
+    parser.add_argument(
+        "--latent-logvar-min",
+        type=float,
+        default=-6.0,
+        help="Lower clamp for posterior/prior latent log-variance.",
+    )
+    parser.add_argument(
+        "--latent-logvar-max",
+        type=float,
+        default=2.0,
+        help="Upper clamp for posterior/prior latent log-variance.",
+    )
+    parser.add_argument(
+        "--disable-bounded-cost-output",
+        action="store_true",
+        help="Use an unbounded raw regression head for cost instead of sigmoid-bounded outputs.",
     )
     parser.add_argument("--use-llm-text-encoder", action="store_true", help="Use a HuggingFace LLM to encode task/evidence text.")
     parser.add_argument(
@@ -200,6 +292,59 @@ def _summarize_numeric(values: Sequence[float]) -> Dict[str, float]:
     }
 
 
+def _quantile(sorted_values: Sequence[float], q: float) -> float:
+    if not sorted_values:
+        return 0.0
+    if len(sorted_values) == 1:
+        return float(sorted_values[0])
+    position = max(0.0, min(1.0, q)) * (len(sorted_values) - 1)
+    lower = int(math.floor(position))
+    upper = int(math.ceil(position))
+    if lower == upper:
+        return float(sorted_values[lower])
+    weight = position - lower
+    return float(sorted_values[lower] * (1.0 - weight) + sorted_values[upper] * weight)
+
+
+def _summarize_target_distribution(values: Sequence[float], kind: str) -> Dict[str, float | str]:
+    if not values:
+        return {
+            "kind": kind,
+            "count": 0.0,
+            "mean": 0.0,
+            "std": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "p25": 0.0,
+            "p50": 0.0,
+            "p75": 0.0,
+            "unique_count": 0.0,
+            "unique_ratio": 0.0,
+            "zero_rate": 0.0,
+            "dominant_ratio": 0.0,
+            "positive_rate": 0.0,
+        }
+    summary = _summarize_numeric(values)
+    sorted_values = sorted(float(value) for value in values)
+    rounded_values = [round(value, 6) for value in sorted_values]
+    counter = Counter(rounded_values)
+    count = float(len(values))
+    summary.update(
+        {
+            "kind": kind,
+            "p25": _quantile(sorted_values, 0.25),
+            "p50": _quantile(sorted_values, 0.50),
+            "p75": _quantile(sorted_values, 0.75),
+            "unique_count": float(len(counter)),
+            "unique_ratio": float(len(counter)) / count,
+            "zero_rate": sum(1.0 for value in sorted_values if abs(value) <= 1.0e-8) / count,
+            "dominant_ratio": max(counter.values()) / count,
+            "positive_rate": sum(1.0 for value in sorted_values if value > 0.0) / count,
+        }
+    )
+    return summary
+
+
 def _top_counts(counter: Counter, limit: int = 8) -> List[Dict[str, object]]:
     return [{"name": name, "count": count} for name, count in counter.most_common(limit)]
 
@@ -309,6 +454,167 @@ def summarize_split_records(split_name: str, records: Sequence[Dict], files: Seq
     }
 
 
+def build_target_diagnostics(train_records: Sequence[Dict], val_records: Sequence[Dict]) -> Dict[str, object]:
+    target_extractors = {
+        "reward": ("regression", lambda record: _safe_float(record.get("outcome", {}).get("reward", 0.0))),
+        "value": (
+            "regression",
+            lambda record: _safe_float(
+                record.get("returns", {}).get("mc_return", record.get("outcome", {}).get("reward", 0.0))
+            ),
+        ),
+        "cost_target": ("regression", lambda record: _normalize_cost(record.get("outcome", {}).get("cost_delta", 0.0))),
+        "uncertainty": (
+            "regression",
+            lambda record: _safe_float(record.get("next_state_targets", {}).get("conflict_score", 0.0)),
+        ),
+        "counterfactual": (
+            "regression",
+            lambda record: _safe_float(
+                record.get("credit_targets", {}).get("leave_one_out_gap", record.get("outcome", {}).get("reward", 0.0))
+            ),
+        ),
+        "done": ("binary", lambda record: 1.0 if bool(record.get("outcome", {}).get("done", False)) else 0.0),
+        "valid_action_count": (
+            "count",
+            lambda record: float(
+                _sequence_length(
+                    record.get("next_state_targets", {}).get(
+                        "valid_action_mask",
+                        record.get("state", {}).get("valid_actions", []),
+                    )
+                )
+            ),
+        ),
+    }
+
+    diagnostics: Dict[str, object] = {}
+    warnings: List[str] = []
+    split_records = {"train": list(train_records), "val": list(val_records)}
+
+    for target_name, (kind, extractor) in target_extractors.items():
+        split_stats: Dict[str, Dict[str, float | str]] = {}
+        for split_name, records in split_records.items():
+            values = [float(extractor(record)) for record in records]
+            split_stats[split_name] = _summarize_target_distribution(values, kind)
+
+        train_stats = split_stats["train"]
+        val_stats = split_stats["val"]
+        mean_gap = float(val_stats["mean"]) - float(train_stats["mean"])
+        std_gap = float(val_stats["std"]) - float(train_stats["std"])
+        diagnostics[target_name] = {
+            "kind": kind,
+            "train": train_stats,
+            "val": val_stats,
+            "mean_gap": mean_gap,
+            "std_gap": std_gap,
+        }
+
+        for split_name, stats in split_stats.items():
+            split_label = f"{target_name}/{split_name}"
+            if float(stats["count"]) <= 1.0:
+                warnings.append(f"{split_label} has too few samples for reliable learning diagnostics.")
+                continue
+            if kind == "regression":
+                if float(stats["std"]) < 1.0e-4:
+                    warnings.append(f"{split_label} has near-zero variance; this head is effectively a constant target.")
+                if float(stats["dominant_ratio"]) > 0.95:
+                    warnings.append(f"{split_label} is dominated by one value ({float(stats['dominant_ratio']):.4f}).")
+                if float(stats["unique_ratio"]) < 0.05:
+                    warnings.append(f"{split_label} has very low label diversity ({float(stats['unique_ratio']):.4f}).")
+            if kind == "binary":
+                positive_rate = float(stats["positive_rate"])
+                if positive_rate < 0.05 or positive_rate > 0.95:
+                    warnings.append(f"{split_label} is highly imbalanced (positive_rate={positive_rate:.4f}).")
+
+        if kind in {"regression", "count"} and abs(mean_gap) > max(0.05, 0.5 * float(train_stats["std"]) + 1.0e-6):
+            warnings.append(f"{target_name} mean differs noticeably between train and val (gap={mean_gap:.4f}).")
+        if kind == "binary":
+            train_rate = float(train_stats["positive_rate"])
+            val_rate = float(val_stats["positive_rate"])
+            if abs(val_rate - train_rate) > 0.10:
+                warnings.append(f"{target_name} positive rate differs noticeably between train and val (gap={val_rate - train_rate:.4f}).")
+
+    return {"targets": diagnostics, "warnings": warnings}
+
+
+def _conflict_signature(record: Dict) -> Tuple[str, str]:
+    state = record.get("state", {})
+    action = record.get("action", {})
+    workflow_state = str(state.get("workflow_state", state.get("state", "unknown"))).strip() or "unknown"
+    action_name = str(action.get("name", "unknown")).strip() or "unknown"
+    return workflow_state, action_name
+
+
+def _summarize_conflict_stats(records: Sequence[Dict], label_name: str) -> Dict[str, object]:
+    grouped: Dict[Tuple[str, str], List[float]] = {}
+    extractor = (
+        lambda record: _safe_float(record.get("outcome", {}).get("reward", 0.0))
+        if label_name == "reward"
+        else _safe_float(record.get("returns", {}).get("mc_return", record.get("outcome", {}).get("reward", 0.0)))
+    )
+    for record in records:
+        grouped.setdefault(_conflict_signature(record), []).append(float(extractor(record)))
+
+    total_groups = 0
+    conflicting_groups = 0
+    conflicting_records = 0
+    examples: List[Dict[str, object]] = []
+    for (workflow_state, action_name), values in grouped.items():
+        unique_values = sorted({round(value, 6) for value in values})
+        if len(values) <= 1:
+            continue
+        total_groups += 1
+        if len(unique_values) <= 1:
+            continue
+        conflicting_groups += 1
+        conflicting_records += len(values)
+        examples.append(
+            {
+                "workflow_state": workflow_state,
+                "action_name": action_name,
+                "count": len(values),
+                "unique_values": unique_values[:8],
+                "min": min(values),
+                "max": max(values),
+            }
+        )
+    examples.sort(key=lambda item: (-int(item["count"]), str(item["action_name"]), str(item["workflow_state"])))
+    record_count = len(records)
+    return {
+        "group_count": total_groups,
+        "conflicting_group_count": conflicting_groups,
+        "conflicting_group_ratio": conflicting_groups / max(total_groups, 1),
+        "conflicting_record_count": conflicting_records,
+        "conflicting_record_ratio": conflicting_records / max(record_count, 1),
+        "examples": examples[:10],
+    }
+
+
+def build_conflict_diagnostics(train_records: Sequence[Dict], val_records: Sequence[Dict]) -> Dict[str, object]:
+    diagnostics = {
+        "reward": {
+            "train": _summarize_conflict_stats(train_records, "reward"),
+            "val": _summarize_conflict_stats(val_records, "reward"),
+        },
+        "value": {
+            "train": _summarize_conflict_stats(train_records, "value"),
+            "val": _summarize_conflict_stats(val_records, "value"),
+        },
+    }
+    warnings: List[str] = []
+    for label_name, split_reports in diagnostics.items():
+        for split_name, report in split_reports.items():
+            conflicting_ratio = float(report["conflicting_record_ratio"])
+            group_ratio = float(report["conflicting_group_ratio"])
+            if conflicting_ratio > 0.05:
+                warnings.append(
+                    f"{label_name}/{split_name} has conflicting labels for repeated state-action signatures "
+                    f"(record_ratio={conflicting_ratio:.4f}, group_ratio={group_ratio:.4f})."
+                )
+    return {"labels": diagnostics, "warnings": warnings}
+
+
 def build_dataset_report(
     train_records: Sequence[Dict],
     val_records: Sequence[Dict],
@@ -317,6 +623,8 @@ def build_dataset_report(
 ) -> Dict[str, object]:
     train_summary = summarize_split_records("train", train_records, train_files)
     val_summary = summarize_split_records("val", val_records, val_files)
+    target_diagnostics = build_target_diagnostics(train_records, val_records)
+    conflict_diagnostics = build_conflict_diagnostics(train_records, val_records)
 
     train_actions = set(train_summary["action_vocab"])
     val_actions = set(val_summary["action_vocab"])
@@ -378,6 +686,8 @@ def build_dataset_report(
             "val": val_summary,
         },
         "comparison": comparison,
+        "target_diagnostics": target_diagnostics,
+        "conflict_diagnostics": conflict_diagnostics,
     }
 
 
@@ -388,6 +698,8 @@ def _format_report_value(value: float) -> str:
 def render_dataset_report_markdown(report: Dict[str, object]) -> str:
     overview = report["overview"]
     comparison = report["comparison"]
+    target_diagnostics = report.get("target_diagnostics", {})
+    conflict_diagnostics = report.get("conflict_diagnostics", {})
     lines = [
         "# Dataset Split Report",
         "",
@@ -471,6 +783,75 @@ def render_dataset_report_markdown(report: Dict[str, object]) -> str:
     warnings = comparison["warnings"] or ["No heuristic issues detected."]
     lines.extend(f"- {warning}" for warning in warnings)
     lines.append("")
+
+    if target_diagnostics:
+        lines.extend(
+            [
+                "## Target Diagnostics",
+                "",
+            ]
+        )
+        for target_name, target_report in target_diagnostics.get("targets", {}).items():
+            train_stats = target_report["train"]
+            val_stats = target_report["val"]
+            lines.extend(
+                [
+                    f"### {target_name}",
+                    "",
+                    f"- Kind: {target_report['kind']}",
+                    (
+                        "- Train mean/std/p50/unique_ratio/dominant_ratio: "
+                        f"{_format_report_value(float(train_stats['mean']))} / "
+                        f"{_format_report_value(float(train_stats['std']))} / "
+                        f"{_format_report_value(float(train_stats['p50']))} / "
+                        f"{_format_report_value(float(train_stats['unique_ratio']))} / "
+                        f"{_format_report_value(float(train_stats['dominant_ratio']))}"
+                    ),
+                    (
+                        "- Val mean/std/p50/unique_ratio/dominant_ratio: "
+                        f"{_format_report_value(float(val_stats['mean']))} / "
+                        f"{_format_report_value(float(val_stats['std']))} / "
+                        f"{_format_report_value(float(val_stats['p50']))} / "
+                        f"{_format_report_value(float(val_stats['unique_ratio']))} / "
+                        f"{_format_report_value(float(val_stats['dominant_ratio']))}"
+                    ),
+                    f"- Mean gap (val-train): {_format_report_value(float(target_report['mean_gap']))}",
+                    "",
+                ]
+            )
+        lines.extend(["### Target Warnings", ""])
+        target_warnings = target_diagnostics.get("warnings", []) or ["No target-level issues detected."]
+        lines.extend(f"- {warning}" for warning in target_warnings)
+        lines.append("")
+    if conflict_diagnostics:
+        lines.extend(["## Label Conflicts", ""])
+        for label_name, split_reports in conflict_diagnostics.get("labels", {}).items():
+            lines.append(f"### {label_name}")
+            lines.append("")
+            for split_name in ("train", "val"):
+                report_item = split_reports.get(split_name, {})
+                lines.append(
+                    f"- {split_name}: conflicting groups={int(report_item.get('conflicting_group_count', 0))}/"
+                    f"{int(report_item.get('group_count', 0))} "
+                    f"({_format_report_value(float(report_item.get('conflicting_group_ratio', 0.0)))})"
+                )
+                lines.append(
+                    f"- {split_name}: conflicting records={int(report_item.get('conflicting_record_count', 0))} "
+                    f"({_format_report_value(float(report_item.get('conflicting_record_ratio', 0.0)))})"
+                )
+            examples = split_reports.get("val", {}).get("examples", []) or split_reports.get("train", {}).get("examples", [])
+            if examples:
+                lines.append("- Example signatures:")
+                for example in examples[:5]:
+                    lines.append(
+                        f"  - {example['action_name']} @ {example['workflow_state']} "
+                        f"count={example['count']} values={example['unique_values']}"
+                    )
+            lines.append("")
+        lines.extend(["### Conflict Warnings", ""])
+        conflict_warnings = conflict_diagnostics.get("warnings", []) or ["No repeated-signature label conflicts detected."]
+        lines.extend(f"- {warning}" for warning in conflict_warnings)
+        lines.append("")
     return "\n".join(lines)
 
 
@@ -488,6 +869,8 @@ def write_dataset_report(output_dir: str, report: Dict[str, object]) -> Dict[str
 def print_dataset_report_summary(report: Dict[str, object], report_paths: Dict[str, str]) -> None:
     overview = report["overview"]
     comparison = report["comparison"]
+    target_diagnostics = report.get("target_diagnostics", {})
+    conflict_diagnostics = report.get("conflict_diagnostics", {})
     print(
         "[Data] "
         f"train_records={overview['train_record_count']} "
@@ -504,6 +887,10 @@ def print_dataset_report_summary(report: Dict[str, object], report_paths: Dict[s
     )
     for warning in comparison["warnings"]:
         print(f"[Data Warning] {warning}")
+    for warning in target_diagnostics.get("warnings", [])[:8]:
+        print(f"[Target Warning] {warning}")
+    for warning in conflict_diagnostics.get("warnings", [])[:8]:
+        print(f"[Conflict Warning] {warning}")
     print(f"[Data] report_json={report_paths['json']}")
     print(f"[Data] report_markdown={report_paths['markdown']}")
 
@@ -580,6 +967,8 @@ def batched(records: Sequence[Dict], batch_size: int, shuffle: bool) -> Iterable
 
 def build_adapter_config(args: argparse.Namespace) -> WorkflowWorldModelConfig:
     config = WorkflowWorldModelConfig()
+    reward_bucket_edges = [float(part.strip()) for part in str(args.reward_bucket_edges).split(",") if part.strip()]
+    bucket_edges = [float(part.strip()) for part in str(args.value_bucket_edges).split(",") if part.strip()]
     config.use_llm_text_encoder = bool(args.use_llm_text_encoder)
     config.text_encoder_model_path = str(args.text_encoder_model_path)
     config.text_encoder_freeze = not bool(args.text_encoder_trainable)
@@ -589,6 +978,22 @@ def build_adapter_config(args: argparse.Namespace) -> WorkflowWorldModelConfig:
     config.stable_next_posterior_targets = not bool(args.disable_latent_target_eval)
     config.normalize_kl_by_latent_dim = not bool(args.disable_kl_dim_normalization)
     config.max_kl_per_sample = float(args.kl_max_per_sample)
+    config.normalize_latent_alignment = not bool(args.disable_latent_loss_normalization)
+    config.latent_cosine_weight = float(args.latent_cosine_weight)
+    config.latent_logvar_weight = float(args.latent_logvar_weight)
+    config.latent_logvar_min = float(args.latent_logvar_min)
+    config.latent_logvar_max = float(args.latent_logvar_max)
+    config.bound_cost_output = not bool(args.disable_bounded_cost_output)
+    config.use_reward_buckets = not bool(args.disable_reward_buckets)
+    config.reward_bucket_edges = tuple(reward_bucket_edges) if reward_bucket_edges else tuple(config.reward_bucket_edges)
+    config.reward_bucket_label_smoothing = float(args.reward_bucket_label_smoothing)
+    config.use_value_buckets = not bool(args.disable_value_buckets)
+    config.value_bucket_edges = tuple(bucket_edges) if bucket_edges else tuple(config.value_bucket_edges)
+    config.value_bucket_label_smoothing = float(args.value_bucket_label_smoothing)
+    config.loss_weights["value"] = float(args.value_loss_weight)
+    config.loss_weights["done"] = float(args.done_loss_weight)
+    config.loss_weights["valid"] = float(args.valid_loss_weight)
+    config.loss_weights["counterfactual"] = float(args.counterfactual_loss_weight)
     return config
 
 
@@ -627,6 +1032,11 @@ def _build_tracker_config(
         "kl_max_per_sample": args.kl_max_per_sample,
         "disable_latent_target_eval": args.disable_latent_target_eval,
         "disable_kl_dim_normalization": args.disable_kl_dim_normalization,
+        "disable_latent_loss_normalization": args.disable_latent_loss_normalization,
+        "latent_cosine_weight": args.latent_cosine_weight,
+        "latent_logvar_weight": args.latent_logvar_weight,
+        "latent_logvar_min": args.latent_logvar_min,
+        "latent_logvar_max": args.latent_logvar_max,
         "use_llm_text_encoder": args.use_llm_text_encoder,
         "text_encoder_model_path": args.text_encoder_model_path,
         "text_encoder_trainable": args.text_encoder_trainable,
@@ -663,8 +1073,24 @@ def _build_tracker_config(
             "stable_next_posterior_targets": model_config.stable_next_posterior_targets,
             "normalize_kl_by_latent_dim": model_config.normalize_kl_by_latent_dim,
             "max_kl_per_sample": model_config.max_kl_per_sample,
-            "aux_names": list(model_config.aux_names),
-            "loss_weights": dict(model_config.loss_weights),
+            "normalize_latent_alignment": model_config.normalize_latent_alignment,
+            "latent_cosine_weight": model_config.latent_cosine_weight,
+            "latent_logvar_weight": model_config.latent_logvar_weight,
+            "latent_logvar_min": model_config.latent_logvar_min,
+        "latent_logvar_max": model_config.latent_logvar_max,
+        "bound_cost_output": model_config.bound_cost_output,
+        "use_reward_buckets": model_config.use_reward_buckets,
+        "reward_bucket_edges": list(model_config.reward_bucket_edges),
+        "reward_bucket_label_smoothing": model_config.reward_bucket_label_smoothing,
+        "use_value_buckets": model_config.use_value_buckets,
+        "value_bucket_edges": list(model_config.value_bucket_edges),
+        "value_bucket_label_smoothing": model_config.value_bucket_label_smoothing,
+        "value_loss_weight": model_config.loss_weights.get("value", 0.0),
+        "done_loss_weight": model_config.loss_weights.get("done", 0.0),
+        "valid_loss_weight": model_config.loss_weights.get("valid", 0.0),
+        "counterfactual_loss_weight": model_config.loss_weights.get("counterfactual", 0.0),
+        "aux_names": list(model_config.aux_names),
+        "loss_weights": dict(model_config.loss_weights),
         },
     }
 
@@ -818,6 +1244,7 @@ def log_metrics_to_tracker(
     train_metrics: Dict[str, float],
     val_metrics: Dict[str, float],
     best_val: float,
+    key_val_metrics: Optional[Dict[str, float]] = None,
 ) -> None:
     if tracker is None:
         return
@@ -825,6 +1252,9 @@ def log_metrics_to_tracker(
     for split, metrics in (("train", train_metrics), ("val", val_metrics)):
         for name, value in metrics.items():
             payload[f"{split}/{name}"] = float(value)
+    if key_val_metrics:
+        for name, value in key_val_metrics.items():
+            payload[f"key-val-metrics/{name}"] = float(value)
     payload["val/best_total"] = float(best_val)
     tracker.log(payload, step=epoch)
 
@@ -844,6 +1274,7 @@ def _accumulate_regression_metrics(
     bucket["count"] = bucket.get("count", 0.0) + float(pred.numel())
     bucket["pred_sum"] = bucket.get("pred_sum", 0.0) + float(pred.sum().item())
     bucket["target_sum"] = bucket.get("target_sum", 0.0) + float(tgt.sum().item())
+    bucket["target_sq_sum"] = bucket.get("target_sq_sum", 0.0) + float(tgt.pow(2).sum().item())
     bucket["abs_sum"] = bucket.get("abs_sum", 0.0) + float(diff.abs().sum().item())
     bucket["sq_sum"] = bucket.get("sq_sum", 0.0) + float(diff.pow(2).sum().item())
 
@@ -928,7 +1359,7 @@ def _accumulate_batch_metrics(
     for name, target in targets.aux.items():
         if name in output.aux:
             _accumulate_regression_metrics(prediction_stats, f"aux_{name}", output.aux[name], target)
-    if targets.counterfactual_credit is not None:
+    if targets.counterfactual_credit is not None and float(model.config.loss_weights.get("counterfactual", 0.0)) > 0:
         _accumulate_regression_metrics(
             prediction_stats,
             "counterfactual",
@@ -947,10 +1378,18 @@ def _finalize_epoch_metrics(
         kind = bucket.get("kind")
         if kind == "regression":
             count = max(bucket.get("count", 0.0), 1.0)
+            target_mean = bucket.get("target_sum", 0.0) / count
+            target_second_moment = bucket.get("target_sq_sum", 0.0) / count
+            target_variance = max(target_second_moment - target_mean * target_mean, 0.0)
+            mse = bucket.get("sq_sum", 0.0) / count
             metrics[f"{name}_pred_mean"] = bucket.get("pred_sum", 0.0) / count
-            metrics[f"{name}_target_mean"] = bucket.get("target_sum", 0.0) / count
+            metrics[f"{name}_target_mean"] = target_mean
             metrics[f"{name}_mae"] = bucket.get("abs_sum", 0.0) / count
-            metrics[f"{name}_rmse"] = math.sqrt(bucket.get("sq_sum", 0.0) / count)
+            metrics[f"{name}_rmse"] = math.sqrt(mse)
+            if target_variance <= 1.0e-12:
+                metrics[f"{name}_skill"] = 1.0 if mse <= 1.0e-12 else 0.0
+            else:
+                metrics[f"{name}_skill"] = max(0.0, 1.0 - mse / target_variance)
         elif kind == "binary":
             count = max(bucket.get("count", 0.0), 1.0)
             metrics[f"{name}_prob_mean"] = bucket.get("prob_sum", 0.0) / count
@@ -981,7 +1420,7 @@ def _format_metric(value: float) -> str:
 
 
 def _format_loss_line(metrics: Dict[str, float]) -> str:
-    order = ("total", "latent", "kl", "reward", "cost", "done", "value", "uncertainty", "valid", "aux", "counterfactual")
+    order = ("total", "latent", "latent_logvar", "kl", "reward", "cost", "done", "value", "uncertainty", "valid", "aux", "counterfactual")
     parts = [f"{name}={_format_metric(metrics[name])}" for name in order if name in metrics]
     return " ".join(parts)
 
@@ -996,6 +1435,62 @@ def _format_regression_summary(metrics: Dict[str, float], name: str) -> str:
         f"pred={_format_metric(metrics[f'{name}_pred_mean'])} "
         f"target={_format_metric(metrics[f'{name}_target_mean'])}"
     )
+
+
+def _build_key_val_metrics(metrics: Dict[str, float]) -> Dict[str, float]:
+    # 统一输出 0-1 区间、越大越好的验证集主指标，便于快速比较实验。
+    key_metrics: Dict[str, float] = {}
+
+    regression_metric_names = (
+        ("reward", "reward_skill"),
+        ("cost", "cost_skill"),
+        ("value", "value_skill"),
+        ("uncertainty", "uncertainty_skill"),
+        ("counterfactual", "counterfactual_skill"),
+    )
+    for raw_name, display_name in regression_metric_names:
+        skill_key = f"{raw_name}_skill"
+        if skill_key in metrics:
+            key_metrics[display_name] = float(max(0.0, min(1.0, metrics[skill_key])))
+
+    if "done_acc" in metrics:
+        key_metrics["done_acc"] = float(max(0.0, min(1.0, metrics["done_acc"])))
+    if "valid_f1" in metrics:
+        key_metrics["valid_f1"] = float(max(0.0, min(1.0, metrics["valid_f1"])))
+    if "valid_exact_match" in metrics:
+        key_metrics["valid_exact_match"] = float(max(0.0, min(1.0, metrics["valid_exact_match"])))
+
+    aux_skill_values = [
+        float(max(0.0, min(1.0, value)))
+        for key, value in metrics.items()
+        if key.startswith("aux_") and key.endswith("_skill")
+    ]
+    if aux_skill_values:
+        key_metrics["aux_skill_mean"] = sum(aux_skill_values) / len(aux_skill_values)
+
+    if key_metrics:
+        key_metrics["overall"] = sum(key_metrics.values()) / len(key_metrics)
+    return key_metrics
+
+
+def _print_key_val_metrics(key_metrics: Dict[str, float]) -> None:
+    if not key_metrics:
+        return
+    order = (
+        "overall",
+        "reward_skill",
+        "cost_skill",
+        "value_skill",
+        "uncertainty_skill",
+        "counterfactual_skill",
+        "done_acc",
+        "valid_f1",
+        "valid_exact_match",
+        "aux_skill_mean",
+    )
+    parts = [f"{name}={_format_metric(key_metrics[name])}" for name in order if name in key_metrics]
+    if parts:
+        print(f"  val key metrics: {' '.join(parts)}")
 
 
 def _print_split_report(split: str, metrics: Dict[str, float], aux_names: Sequence[str]) -> None:
@@ -1179,10 +1674,12 @@ def main() -> None:
                 batch_size=args.batch_size,
                 device=args.device,
             )
+            key_val_metrics = _build_key_val_metrics(val_metrics)
             current_val = val_metrics.get("total", train_metrics.get("total", 0.0))
             print(f"[Epoch {epoch}] train_total={train_metrics.get('total', 0.0):.4f} val_total={current_val:.4f}")
             _print_split_report("train", train_metrics, model_config.aux_names)
             _print_split_report("val", val_metrics, model_config.aux_names)
+            _print_key_val_metrics(key_val_metrics)
             if current_val < best_val:
                 # 以验证集 total loss 作为最优指标，保存当前最佳 checkpoint。
                 best_val = current_val
@@ -1192,9 +1689,9 @@ def main() -> None:
                     adapter=adapter,
                 model_config=model_config,
                 epoch=epoch,
-                metrics={"train": train_metrics, "val": val_metrics},
+                metrics={"train": train_metrics, "val": val_metrics, "key_val_metrics": key_val_metrics},
             )
-            log_metrics_to_tracker(tracker, epoch, train_metrics, val_metrics, best_val)
+            log_metrics_to_tracker(tracker, epoch, train_metrics, val_metrics, best_val, key_val_metrics=key_val_metrics)
     finally:
         if tracker is not None:
             tracker.finish()
