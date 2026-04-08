@@ -521,17 +521,14 @@ class LLM_Scheduler:
     def _summarize_text(self, text, limit=400):
         if text is None:
             return ""
-        text = str(text).strip().replace("\n", " ")
-        if len(text) <= limit:
-            return text
-        return text[:limit] + "..."
+        return str(text).strip()
 
     def _build_workflow_summary(self, global_info):
         workflow = getattr(global_info, "workflow", None)
         if workflow is None or not getattr(workflow, "workflow", None):
             return {
                 "executed_steps": [],
-                "recent_answers": list(getattr(global_info, "answers", []))[-3:],
+                "recent_answers": list(getattr(global_info, "answers", [])),
                 "state": str(getattr(global_info, "workflow", None).state if getattr(global_info, "workflow", None) else []),
                 "all_actions": [],
                 "valid_actions": [],
@@ -574,7 +571,7 @@ class LLM_Scheduler:
                 }
             )
 
-        recent_answers = [self._summarize_text(answer, limit=120) for answer in list(getattr(global_info, "answers", []))[-3:]]
+        recent_answers = [self._summarize_text(answer, limit=120) for answer in list(getattr(global_info, "answers", []))]
         answer_counter = {}
         for answer in recent_answers:
             normalized = str(answer).strip()
@@ -619,8 +616,8 @@ class LLM_Scheduler:
             "state": str(workflow.state),
             "all_actions": workflow.all_actions,
             "valid_actions": workflow.valid_actions,
-            "reasoning_results": [self._summarize_text(item, limit=240) for item in workflow.valid_reasoning_results[-5:]],
-            "tool_results": [self._summarize_text(item, limit=240) for item in workflow.valid_tool_results[-5:]],
+            "reasoning_results": [self._summarize_text(item, limit=240) for item in workflow.valid_reasoning_results],
+            "tool_results": [self._summarize_text(item, limit=240) for item in workflow.valid_tool_results],
             "answer_consensus": {
                 "top_answer": top_answer,
                 "top_count": top_count,
@@ -643,12 +640,6 @@ class LLM_Scheduler:
         }
 
     def _build_messages(self, global_info, max_num, decision_mode):
-        multi_mode_instruction = (
-            f"You may return between 1 and {max_num} distinct agents in multi-agent mode, "
-            "ordered from highest to lowest confidence. "
-            "When uncertainty is non-trivial, evidence is missing, or the workflow is still early, prefer 2-3 complementary agents rather than redundant backups. "
-            "If one agent is clearly the best next step and complementary branches add little value, prefer fewer agents and assign it a substantially higher confidence than the backups."
-        )
         candidates = [
             {
                 "index": idx,
@@ -659,42 +650,46 @@ class LLM_Scheduler:
             }
             for idx, role in enumerate(self.agent_role_list)
         ]
+        workflow_summary = self._build_workflow_summary(global_info)
+        task_question = str(global_info.task.get("Question", "") or "").strip()
+        task_brief = self._summarize_text(task_question, limit=220)
+        compact_state = {
+            "task_brief": task_brief,
+            "workflow_state": workflow_summary.get("state"),
+            "executed_steps": len(workflow_summary.get("executed_steps", [])),
+            "recent_answers": workflow_summary.get("recent_answers", []),
+            "evidence_status": workflow_summary.get("evidence_status", {}),
+            "verification_status": workflow_summary.get("verification_status", {}),
+            "termination_candidate": workflow_summary.get("termination_candidate", False),
+            "stop_reasons": workflow_summary.get("stop_reasons", []),
+            "last_steps": workflow_summary.get("executed_steps", [])[-4:],
+        }
         system_prompt = {
             "role": "system",
             "content": (
-                "You are the scheduler for a research-oriented multi-agent system. "
-                "Your only job is to decide the next agent or agents, not to solve the user task. "
-                "Balance efficiency with exploration across complementary capabilities. "
-                "Prefer diverse branches early when reasoning, evidence, or verification coverage is incomplete. "
-                "Do not re-open a solved question just to gain marginal confidence, but do preserve useful branch diversity before the answer is clearly locked in. "
-                "Stopping policy: "
-                "If different agent types already agree on the same answer and no explicit contradiction exists, prefer finalization or termination. "
-                "Do not schedule CriticAgent after ConcluderAgent unless there is unresolved disagreement, conflicting evidence, missing external evidence, or an explicit failure signal. "
-                "For static factual multiple-choice questions, once reasoning and external evidence converge on the same option, further verification is usually wasteful. "
-                "Treat repeated validation of the same answer as a negative signal unless the state summary explicitly shows conflict, low evidence coverage, or a need for complementary verification. "
-                f"Decision mode keyword: {decision_mode} ({self.mode2description.get(decision_mode, decision_mode)}). "
-                f"{multi_mode_instruction if decision_mode == 'multi' else 'You must return exactly one agent in single-agent mode.'} "
-                f"Current workflow state: {getattr(global_info.workflow, 'state', 'unknown')}. "
-                "Scheduling objective: choose the next best agent execution plan for the current step. "
+                "You are a scheduler, not a solver. "
+                "Choose the next agent plan only from the provided workflow state. "
+                "Do not solve the user task, do not restate the task, and do not explain your reasoning in natural language. "
+                "Select agents that reduce uncertainty, recover from failures, or move the workflow toward a final answer. "
+                "Avoid redundant retries of the same failed evidence action unless the state clearly suggests a different retrieval angle. "
+                "Prefer complementary coverage across evidence, reasoning, verification, and synthesis. "
+                "If termination_candidate is true and there is no conflict, prefer TerminatorAgent. "
+                "If a conclusion already exists and verification has no conflict, avoid CriticAgent_gpt4o. "
+                f"Decision mode: {decision_mode}. "
                 f"Available agents: {json.dumps(candidates, ensure_ascii=True)}. "
-                "Return strict JSON only. "
-                'For multi-agent mode, use: {"selected_agents": [{"name": "agent_name1", "confidence": 0.88}, {"name": "agent_name2", "confidence": 0.23}]}. '
-                'For single-agent mode, use: {"selected_agent": {"name": "agent_name", "confidence": 0.91}}. '
-                "Confidence must be in [0, 1]. Use agent names exactly as provided. Do not output any extra text."
+                "Output strict JSON only, with no prose before or after the JSON. "
+                'Multi-agent format: {"selected_agents": [{"name": "agent_name1", "confidence": 0.88}, {"name": "agent_name2", "confidence": 0.23}]}. '
+                'Single-agent format: {"selected_agent": {"name": "agent_name", "confidence": 0.91}}. '
+                "Confidence must be within [0, 1]. "
+                "Use agent names exactly as provided."
             ),
         }
-        workflow_summary = self._build_workflow_summary(global_info)
         user_prompt = {
             "role": "user",
             "content": (
-                "Scheduler state summary:\n"
-                f"{json.dumps({'task_question': global_info.task.get('Question', ''), 'workflow_summary': workflow_summary}, ensure_ascii=False)}\n\n"
-                "Use the summary above as state only. "
-                "Do not answer the task directly. "
-                "Prefer a non-redundant schedule with complementary capabilities when the workflow is still uncertain or incomplete. "
-                "Avoid returning multiple agents that serve the same stage unless the summary shows explicit disagreement. "
-                "If `termination_candidate=true` and there is no conflict, strongly prefer `TerminatorAgent`. "
-                "If a conclusion already exists and verification_status shows no conflict, do not schedule `CriticAgent_gpt4o` again."
+                "Scheduler state:\n"
+                f"{json.dumps(compact_state, ensure_ascii=False)}\n\n"
+                "Return only the JSON decision."
             ),
         }
         return [system_prompt, user_prompt]

@@ -463,13 +463,13 @@ class WorkflowDatasetRecorder:
 
         recent_answers: List[str] = []
         if answers:
-            recent_answers = [self._summarize_text(item, limit=160) for item in answers if item is not None][-3:]
+            recent_answers = [self._summarize_text(item, limit=160) for item in answers if item is not None]
         elif actions:
             recent_answers = [
                 self._summarize_text(action.result.get("answer"), limit=160)
                 for action in actions
                 if action.result.get("answer")
-            ][-3:]
+            ]
 
         state = tuple(
             (
@@ -488,8 +488,8 @@ class WorkflowDatasetRecorder:
             "state": str(state),
             "all_actions": all_actions,
             "workflow_valid_actions": workflow_valid_actions,
-            "reasoning_results": reasoning_results[-5:],
-            "tool_results": tool_results[-5:],
+            "reasoning_results": reasoning_results,
+            "tool_results": tool_results,
         }
 
     def _build_next_state_targets(self, actions: Sequence[Any], done: bool) -> Dict[str, Any]:
@@ -720,7 +720,7 @@ class WorkflowDatasetRecorder:
         raw = f"{getattr(global_info, 'workpath', '')}|{task_type}|{question}"
         return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
-    def _summarize_text(self, value: Any, limit: Optional[int] = None) -> str:
+    def _summarize_text_legacy_unused(self, value: Any, limit: Optional[int] = None) -> str:
         # 优先复用 scheduler 内已有的摘要逻辑，避免两个模块对文本截断策略不一致。
         limit = self.max_summary_chars if limit is None else limit
         if hasattr(self.scheduler, "_summarize_text"):
@@ -733,6 +733,10 @@ class WorkflowDatasetRecorder:
         if isinstance(success, bool):
             return success
         return str(success).strip().lower() == "success"
+
+    def _summarize_text(self, value: Any, limit: Optional[int] = None) -> str:
+        _ = self.max_summary_chars if limit is None else limit
+        return str(value or "").strip()
 
     def _to_float(self, value: Any) -> float:
         # 统一处理 tensor / 标量 / None，方便日志序列化。

@@ -285,6 +285,27 @@ class BenchmarkEvaluator:
             if abs(int(float(final_num))) > 100 and abs(int(float(true_num))) > 100:
                 is_correct = (int(float(final_num)) == int(float(true_num)))
         return is_correct
+
+    @staticmethod
+    def check_gaia(final_ans, true_ans):
+        if final_ans is None or true_ans is None:
+            return False
+
+        final_text = str(final_ans).strip()
+        true_text = str(true_ans).strip()
+        if len(final_text) == 0 or len(true_text) == 0:
+            return False
+
+        final_num = BenchmarkEvaluator.extract_number(final_text)
+        true_num = BenchmarkEvaluator.extract_number(true_text)
+        if final_num is not None and true_num is not None:
+            if math.isfinite(final_num) and math.isfinite(true_num):
+                if abs(float(final_num) - float(true_num)) < FLOAT_TOLERANCE:
+                    return True
+                if round(float(final_num), 3) == round(float(true_num), 3):
+                    return True
+
+        return BenchmarkEvaluator.normalize_string(final_text) == BenchmarkEvaluator.normalize_string(true_text)
     
     @staticmethod
     def extract_math_answer(text):

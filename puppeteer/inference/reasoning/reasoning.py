@@ -221,6 +221,19 @@ class GraphReasoning:
                 }
                 print(transition)
                 finalized_paths.append({"transition": transition, "global_info": reasoning_path.global_info})
+            elif self.task.get("type") == "GAIA":
+                true_answer = self.task.get("Answer")
+                reward = 0 if true_answer is None else (1 if BenchmarkEvaluator.check_gaia(aggregated_answer, true_answer) else -1)
+                transition = {
+                'state': reasoning_path.global_info.workflow.state,
+                'reward': reward,
+                'action': None,
+                'next_state': None,
+                'done': True,
+                'path_id': idx
+                }
+                print(transition)
+                finalized_paths.append({"transition": transition, "global_info": reasoning_path.global_info})
 
             elif self.task.get("type") == "SRDD":
                 reward, metrics = BenchmarkEvaluator.check_srdd(aggregated_answer, reasoning_path.global_info.task.get("Question"))

@@ -4,16 +4,17 @@ import json
 import yaml
 from tasks.runner import BenchmarkRunner
 from tasks.evaluator import BenchmarkEvaluator
-from tasks import mmlu_pro, gsm_hard, srdd, creative_writing
+from tasks import mmlu_pro, gsm_hard, srdd, creative_writing, gaia
 
 def main():
     parser = argparse.ArgumentParser(description="Run benchmark tasks")
-    parser.add_argument("task", choices=["MMLU-Pro", "gsm-hard", "SRDD", "CW"])
+    parser.add_argument("task", choices=["MMLU-Pro", "gsm-hard", "SRDD", "CW", "GAIA"])
     parser.add_argument("mode", choices=["validation", "test"])
     parser.add_argument("--level", type=int, default=1)
     parser.add_argument("--index", type=int, default=-1)
     parser.add_argument("--data_limit", type=int, default=1)
     parser.add_argument("--personas", type=str, default="personas/personas.jsonl")
+    parser.add_argument("--gaia_data_dir", type=str, default="data/GAIA")
 
     args = parser.parse_args()
 
@@ -43,10 +44,22 @@ def main():
         "gsm-hard": gsm_hard.run,
         "SRDD": srdd.run,
         "CW": creative_writing.run,
+        "GAIA": gaia.run,
     }
 
     if args.task in task_map:
-        task_map[args.task](runner, evaluator, results_dir, args.mode, args.data_limit)
+        if args.task == "GAIA":
+            task_map[args.task](
+                runner,
+                evaluator,
+                results_dir,
+                args.mode,
+                args.data_limit,
+                level=args.level,
+                data_dir=args.gaia_data_dir,
+            )
+        else:
+            task_map[args.task](runner, evaluator, results_dir, args.mode, args.data_limit)
     else:
         print(f"Unknown task: {args.task}")
 

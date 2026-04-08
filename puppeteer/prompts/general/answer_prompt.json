@@ -25,6 +25,14 @@
         "For large numbers write all digits without abbreviation.",
         "Finish your answer with the following template: FINAL ANSWER: [YOUR FINAL ANSWER]"
     ],
+    "GAIA_answer": [
+        "Provide only the final answer required by the question.",
+        "Use as few words as possible while preserving correctness.",
+        "If the answer should be a number, return only the number with no units unless the question explicitly requires them.",
+        "If the answer should be a string, avoid extra explanation or punctuation unless explicitly required.",
+        "If the answer should be a list, return a comma separated list.",
+        "Finish your answer with the following template: FINAL ANSWER: [YOUR FINAL ANSWER]"
+    ],
     "code_answer": [
         "Provide the code in its most complete and executable form.",
         "Ensure the code includes necessary libraries, imports, and setup.",
@@ -72,5 +80,13 @@
         "Do not round the number unless specifically requested.",
         "Use plain decimal format with decimal point if needed.",
         "For large numbers write all digits without abbreviation."
+    ],
+    "GAIA_aggregation": [
+        "You have several answer candidates. They are:\n{}",
+        "Choose the most reliable candidate based on the available evidence.",
+        "Prefer answers that are concise, directly responsive to the question, and consistent with file or web evidence.",
+        "Return only the final answer with as few words as possible.",
+        "If the answer is a number, return only the number unless the question explicitly requires units.",
+        "If the answer is a list, return a comma separated list."
     ]
 }

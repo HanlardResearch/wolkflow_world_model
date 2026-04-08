@@ -30,8 +30,9 @@
     "model_name": "Qwen3.5-4B"
   },
   "llm_scheduler": {
+    "model_name": "Qwen3.5-35B",
     "force_deterministic_generation": false,
-    "model_path": "/extrahome0/HF_models/Qwen/Qwen3.5-4B",
+    "model_path": "/extrahome0/HF_models/Qwen/Qwen3.5-35B-A3B-FP8",
     "mode": "multi",
     "gpu_ids": [0, 1, 2, 3],
     "top_k": 4,
@@ -49,7 +50,7 @@
     "tensor_parallel_size": 4,
     "gpu_memory_utilization": 0.9,
     "max_model_len": 262144,
-    "dtype": "bfloat16",
+    "dtype": "auto",
     "enforce_eager": false,
     "generation": {
       "max_new_tokens": 131072,
@@ -102,6 +103,6 @@
       ]
     }
   },
-  "dataset_name": "MMLU-Pro",
+  "dataset_name": "GAIA",
   "dataset_mode": "validation"
 }
