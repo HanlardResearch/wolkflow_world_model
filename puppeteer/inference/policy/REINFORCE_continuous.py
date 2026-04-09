@@ -113,6 +113,7 @@ class LLM_Scheduler:
         self._engine = None
         self._tokenizer = None
         self._scheduler_loggers = {}
+        self.last_exchange = None
         self.mode2description = {
             "multi": (
                 "Select multiple useful agents for the next step when the task benefits from parallel exploration, "
@@ -866,6 +867,18 @@ class LLM_Scheduler:
         logger.info(f"LLM scheduler raw response: {response_text}")
         parsed = self._parse_json_block(response_text)
         selected_agents = self._extract_selected_agents(response_text, decision_mode, max_num=max_num, parsed=parsed)
+        self.last_exchange = {
+            "path_id": getattr(global_info, "path_id", None),
+            "decision_mode": decision_mode,
+            "max_num": max_num,
+            "backend": self.backend,
+            "model_name": self.model_name,
+            "messages": copy.deepcopy(messages),
+            "response_text": response_text,
+            "parsed": copy.deepcopy(parsed),
+            "selected_agents": copy.deepcopy(selected_agents),
+            "vllm_hp": self._get_vllm_hp() if self.backend == "vllm" else None,
+        }
         self._log_scheduler_exchange(
             global_info,
             messages,
@@ -1426,6 +1439,7 @@ class ContinuousREINFORCE(LearningPolicy):
                 "state_snapshot": copy.deepcopy(state_snapshot) if state_snapshot is not None else None,
                 "candidate_agents": candidate_agents,
                 "selected_confidence": float(prob_value.item() if hasattr(prob_value, "item") else prob_value),
+                "scheduler_exchange": copy.deepcopy(getattr(self.llm_scheduler, "last_exchange", None)),
                 "path_id": trajectory_idx,
             }
         )
@@ -1505,6 +1519,7 @@ class ContinuousREINFORCE(LearningPolicy):
                             "state_snapshot": self.world_model_recorder.capture_decision_state(global_info),
                             "candidate_agents": [self.agent_role_list[self.end_action.item()]],
                             "selected_confidence": 1.0,
+                            "scheduler_exchange": copy.deepcopy(getattr(self.llm_scheduler, "last_exchange", None)),
                             "path_id": idx,
                         }
                     )
@@ -1614,6 +1629,7 @@ class ContinuousREINFORCE(LearningPolicy):
                 "state_snapshot": self.world_model_recorder.capture_decision_state(global_info),
                 "candidate_agents": [self.agent_role_list[self.end_action.item()]],
                 "selected_confidence": 1.0,
+                "scheduler_exchange": copy.deepcopy(getattr(self.llm_scheduler, "last_exchange", None)),
                 "path_id": idx,
             }
         )

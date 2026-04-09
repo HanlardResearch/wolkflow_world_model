@@ -165,6 +165,23 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Use an unbounded raw regression head for cost instead of sigmoid-bounded outputs.",
     )
+    parser.add_argument(
+        "--use-qwen-text-encoder",
+        action="store_true",
+        help="Use sentence-transformers Qwen text embeddings for task/evidence/step text.",
+    )
+    parser.add_argument(
+        "--qwen-text-encoder-model-name",
+        type=str,
+        default="Qwen/Qwen3-Embedding-0.6B",
+        help="SentenceTransformer model name or local path used for text embeddings.",
+    )
+    parser.add_argument(
+        "--qwen-text-encoder-batch-size",
+        type=int,
+        default=16,
+        help="Batch size used inside the SentenceTransformer text encoder.",
+    )
     parser.add_argument("--use-llm-text-encoder", action="store_true", help="Use a HuggingFace LLM to encode task/evidence text.")
     parser.add_argument(
         "--text-encoder-model-path",
@@ -965,11 +982,44 @@ def batched(records: Sequence[Dict], batch_size: int, shuffle: bool) -> Iterable
         yield [records[index] for index in batch_indices]
 
 
+def group_records_by_episode(records: Sequence[Dict]) -> List[List[Dict]]:
+    grouped: Dict[str, List[Dict]] = {}
+    for record in records:
+        episode_id = str(record.get("episode_id", "unknown"))
+        grouped.setdefault(episode_id, []).append(record)
+    episodes = []
+    for episode_records in grouped.values():
+        episodes.append(
+            sorted(
+                episode_records,
+                key=lambda item: (
+                    int(item.get("t", 0) or 0),
+                    str(item.get("path_id", "")),
+                ),
+            )
+        )
+    return episodes
+
+
+def batched_episodes(episodes: Sequence[Sequence[Dict]], batch_size: int, shuffle: bool) -> Iterable[List[List[Dict]]]:
+    episode_list = [list(episode) for episode in episodes if episode]
+    if shuffle:
+        random.shuffle(episode_list)
+    batch_size = max(int(batch_size), 1)
+    for start in range(0, len(episode_list), batch_size):
+        yield episode_list[start : start + batch_size]
+
+
 def build_adapter_config(args: argparse.Namespace) -> WorkflowWorldModelConfig:
     config = WorkflowWorldModelConfig()
     reward_bucket_edges = [float(part.strip()) for part in str(args.reward_bucket_edges).split(",") if part.strip()]
     bucket_edges = [float(part.strip()) for part in str(args.value_bucket_edges).split(",") if part.strip()]
+    config.use_qwen_text_encoder = bool(args.use_qwen_text_encoder)
+    config.qwen_text_encoder_model_name = str(args.qwen_text_encoder_model_name)
+    config.qwen_text_encoder_batch_size = int(args.qwen_text_encoder_batch_size)
     config.use_llm_text_encoder = bool(args.use_llm_text_encoder)
+    if config.use_qwen_text_encoder:
+        config.use_llm_text_encoder = False
     config.text_encoder_model_path = str(args.text_encoder_model_path)
     config.text_encoder_freeze = not bool(args.text_encoder_trainable)
     config.text_encoder_dtype = str(args.text_encoder_dtype)
@@ -1037,6 +1087,9 @@ def _build_tracker_config(
         "latent_logvar_weight": args.latent_logvar_weight,
         "latent_logvar_min": args.latent_logvar_min,
         "latent_logvar_max": args.latent_logvar_max,
+        "use_qwen_text_encoder": args.use_qwen_text_encoder,
+        "qwen_text_encoder_model_name": args.qwen_text_encoder_model_name,
+        "qwen_text_encoder_batch_size": args.qwen_text_encoder_batch_size,
         "use_llm_text_encoder": args.use_llm_text_encoder,
         "text_encoder_model_path": args.text_encoder_model_path,
         "text_encoder_trainable": args.text_encoder_trainable,
@@ -1064,6 +1117,9 @@ def _build_tracker_config(
             "num_actions": model_config.num_actions,
             "num_task_types": model_config.num_task_types,
             "num_workflow_states": model_config.num_workflow_states,
+            "use_qwen_text_encoder": model_config.use_qwen_text_encoder,
+            "qwen_text_encoder_model_name": model_config.qwen_text_encoder_model_name,
+            "qwen_text_encoder_batch_size": model_config.qwen_text_encoder_batch_size,
             "use_llm_text_encoder": model_config.use_llm_text_encoder,
             "text_encoder_model_path": model_config.text_encoder_model_path,
             "text_encoder_freeze": model_config.text_encoder_freeze,
@@ -1547,22 +1603,53 @@ def train_epoch(
     loss_sums: Dict[str, float] = {}
     prediction_stats: Dict[str, Dict[str, float]] = {}
     step_count = 0
-    for batch_records in batched(records, batch_size=batch_size, shuffle=True):
-        # 每个 batch 同时构造当前状态和下一状态，用于监督 prior 与 next posterior 对齐。
-        batch = adapter.build_batch(batch_records, device=device)
-        next_batch = adapter.build_batch(build_next_state_records(batch_records), device=device)
-        output = model(batch)
-        losses = model.compute_losses(batch, next_batch=next_batch, output=output)
-        for name, loss in losses.items():
-            if not torch.isfinite(loss):
-                raise ValueError(f"Non-finite training loss '{name}' detected.")
+    episodes = group_records_by_episode(records)
+    for episode_batch in batched_episodes(episodes, batch_size=batch_size, shuffle=True):
+        positions = [0 for _ in episode_batch]
+        hidden_states: List[Optional[torch.Tensor]] = [None for _ in episode_batch]
+        micro_step_count = 0
+        total_loss: Optional[torch.Tensor] = None
         optimizer.zero_grad(set_to_none=True)
-        losses["total"].backward()
+        while True:
+            active_indices = [index for index, episode in enumerate(episode_batch) if positions[index] < len(episode)]
+            if not active_indices:
+                break
+            batch_records = [episode_batch[index][positions[index]] for index in active_indices]
+            hidden_rows = [hidden_states[index] for index in active_indices]
+            batch_hidden_state = None
+            if any(state is not None for state in hidden_rows):
+                template = next((state for state in hidden_rows if state is not None), None)
+                if template is None:
+                    raise RuntimeError("Failed to infer hidden-state template for sequential world-model training.")
+                batch_hidden_state = torch.stack(
+                    [state if state is not None else template.new_zeros(template.shape) for state in hidden_rows],
+                    dim=0,
+                )
+            batch = adapter.build_batch(batch_records, hidden_state=batch_hidden_state, device=device)
+            output = model(batch)
+            next_batch = adapter.build_batch(
+                build_next_state_records(batch_records),
+                hidden_state=output.prior_hidden_state.detach(),
+                device=device,
+            )
+            losses = model.compute_losses(batch, next_batch=next_batch, output=output)
+            for name, loss in losses.items():
+                if not torch.isfinite(loss):
+                    raise ValueError(f"Non-finite training loss '{name}' detected.")
+            total_loss = losses["total"] if total_loss is None else total_loss + losses["total"]
+            micro_step_count += 1
+            step_count += 1
+            _accumulate_batch_metrics(model, loss_sums, prediction_stats, losses, output, batch)
+            for row, episode_index in enumerate(active_indices):
+                hidden_states[episode_index] = output.prior_hidden_state[row]
+                positions[episode_index] += 1
+        if total_loss is None or micro_step_count <= 0:
+            continue
+        total_loss = total_loss / float(micro_step_count)
+        total_loss.backward()
         if gradient_clip > 0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
         optimizer.step()
-        step_count += 1
-        _accumulate_batch_metrics(model, loss_sums, prediction_stats, losses, output, batch)
     return _finalize_epoch_metrics(loss_sums, prediction_stats, step_count)
 
 
@@ -1581,16 +1668,41 @@ def evaluate_epoch(
     loss_sums: Dict[str, float] = {}
     prediction_stats: Dict[str, Dict[str, float]] = {}
     step_count = 0
-    for batch_records in batched(records, batch_size=batch_size, shuffle=False):
-        batch = adapter.build_batch(batch_records, device=device)
-        next_batch = adapter.build_batch(build_next_state_records(batch_records), device=device)
-        output = model(batch)
-        losses = model.compute_losses(batch, next_batch=next_batch, output=output)
-        for name, loss in losses.items():
-            if not torch.isfinite(loss):
-                raise ValueError(f"Non-finite validation loss '{name}' detected.")
-        step_count += 1
-        _accumulate_batch_metrics(model, loss_sums, prediction_stats, losses, output, batch)
+    episodes = group_records_by_episode(records)
+    for episode_batch in batched_episodes(episodes, batch_size=batch_size, shuffle=False):
+        positions = [0 for _ in episode_batch]
+        hidden_states: List[Optional[torch.Tensor]] = [None for _ in episode_batch]
+        while True:
+            active_indices = [index for index, episode in enumerate(episode_batch) if positions[index] < len(episode)]
+            if not active_indices:
+                break
+            batch_records = [episode_batch[index][positions[index]] for index in active_indices]
+            hidden_rows = [hidden_states[index] for index in active_indices]
+            batch_hidden_state = None
+            if any(state is not None for state in hidden_rows):
+                template = next((state for state in hidden_rows if state is not None), None)
+                if template is None:
+                    raise RuntimeError("Failed to infer hidden-state template for sequential world-model evaluation.")
+                batch_hidden_state = torch.stack(
+                    [state if state is not None else template.new_zeros(template.shape) for state in hidden_rows],
+                    dim=0,
+                )
+            batch = adapter.build_batch(batch_records, hidden_state=batch_hidden_state, device=device)
+            output = model(batch)
+            next_batch = adapter.build_batch(
+                build_next_state_records(batch_records),
+                hidden_state=output.prior_hidden_state,
+                device=device,
+            )
+            losses = model.compute_losses(batch, next_batch=next_batch, output=output)
+            for name, loss in losses.items():
+                if not torch.isfinite(loss):
+                    raise ValueError(f"Non-finite validation loss '{name}' detected.")
+            step_count += 1
+            _accumulate_batch_metrics(model, loss_sums, prediction_stats, losses, output, batch)
+            for row, episode_index in enumerate(active_indices):
+                hidden_states[episode_index] = output.prior_hidden_state[row]
+                positions[episode_index] += 1
     return _finalize_epoch_metrics(loss_sums, prediction_stats, step_count)
 
 

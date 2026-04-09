@@ -1,9 +1,9 @@
 import json
 import yaml
 import os
+from copy import deepcopy
 from tenacity import retry, stop_after_attempt, wait_exponential
 import re
-from copy import deepcopy
 
 from tools.base.register  import global_tool_registry
 from tools.web_search import Web_Search
@@ -98,8 +98,8 @@ class Reasoning_Agent(Agent):
         return  parameter
     
     def _compress_data(self, data):
-        if len(data) > 5000:
-            data = data[:5000]
+        if data is None:
+            return ""
         return data
 
     def _clean_final_answer(self, answer):
@@ -162,7 +162,11 @@ class Reasoning_Agent(Agent):
     def _build_current_action(self, format_action, flag=True, answer=None, step_data=None, tokens=0):
         result = {
             "step_data": step_data,
-            "answer": answer    
+            "answer": answer,
+            "raw_prompt": getattr(self, "last_prompt", ""),
+            "raw_response": getattr(self, "last_response_text", ""),
+            "raw_messages": deepcopy(getattr(self, "last_query_messages", [])),
+            "system_prompt": getattr(self, "system_prompt", ""),
         }
         current_action = Action(action=format_action, result=result, 
                                 success="Success" if flag else "Failure", 
@@ -346,7 +350,9 @@ class Reasoning_Agent(Agent):
             self.dialog_history[-1]['content'] += str(query)
         self.last_prompt = prompt['content']
         messages = list(self.dialog_history)
+        self.last_query_messages = deepcopy(messages)
         response_text, total_tokens = self.query_func(messages)
+        self.last_response_text = response_text
         message = {"role": "assistant", "content": f"{response_text}\n\n Total tokens: {total_tokens}"}
         self.dialog_history.append(dict(message))
         return response_text, total_tokens

@@ -103,7 +103,7 @@ def _top_error_rows(rows: Iterable[Dict[str, Any]], error_key: str, limit: int =
 def _format_row_label(row: Dict[str, Any], error_key: str) -> str:
     return (
         f"#{row.get('index', '?')} {row.get('action_name', 'unknown')}\n"
-        f"{row.get('workflow_state', 'unknown')[:46]}"
+        f"{row.get('workflow_state', 'unknown')}"
         f"\nerr={float(row.get('error', {}).get(error_key, 0.0)):.3f}"
     )
 

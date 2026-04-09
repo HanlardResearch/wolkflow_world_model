@@ -232,7 +232,10 @@ def _summarize_config_keys(config: object, limit: int = 16) -> str:
 class WorkflowWorldModelConfig:
     # 各路输入特征维度拆开配置，方便后续替换编码器或扩充特征。
     task_dim: int = 8
-    step_dim: int = 8
+    step_numeric_dim: int = 8
+    step_text_field_dim: int = 8
+    num_step_text_fields: int = 6
+    step_dim: int = 16
     evidence_dim: int = 8
     budget_dim: int = 4
     node_dim: int = 6
@@ -251,6 +254,9 @@ class WorkflowWorldModelConfig:
     num_actions: int = 64
     num_task_types: int = 32
     num_workflow_states: int = 32
+    use_qwen_text_encoder: bool = False
+    qwen_text_encoder_model_name: str = "Qwen/Qwen3-Embedding-0.6B"
+    qwen_text_encoder_batch_size: int = 16
     use_llm_text_encoder: bool = False
     text_encoder_model_path: str = ""
     text_encoder_freeze: bool = True
@@ -312,6 +318,9 @@ class WorkflowWorldModelBatch:
     step_role_ids: Tensor
     step_action_ids: Tensor
     step_features: Tensor
+    step_text_field_type_ids: Tensor
+    step_text_field_features: Tensor
+    step_text_field_mask: Tensor
     step_mask: Tensor
     evidence_type_ids: Tensor
     evidence_features: Tensor
@@ -343,6 +352,9 @@ class WorkflowWorldModelBatch:
             step_role_ids=self.step_role_ids.to(device),
             step_action_ids=self.step_action_ids.to(device),
             step_features=self.step_features.to(device),
+            step_text_field_type_ids=self.step_text_field_type_ids.to(device),
+            step_text_field_features=self.step_text_field_features.to(device),
+            step_text_field_mask=self.step_text_field_mask.to(device),
             step_mask=self.step_mask.to(device),
             evidence_type_ids=self.evidence_type_ids.to(device),
             evidence_features=self.evidence_features.to(device),
@@ -407,14 +419,46 @@ class MLP(nn.Module):
         return self.net(inputs)
 
 
+class StructuredStateSpaceCell(nn.Module):
+    # 轻量 SSM 单元：用连续衰减状态聚合前缀信息。
+    def __init__(self, input_dim: int, state_dim: int, output_dim: int, dropout: float) -> None:
+        super().__init__()
+        self.input_projection = nn.Linear(input_dim, state_dim * 2)
+        self.output_projection = nn.Linear(state_dim, output_dim)
+        self.skip_projection = nn.Linear(input_dim, output_dim)
+        self.output_norm = nn.LayerNorm(output_dim)
+        self.dropout = nn.Dropout(dropout)
+        self.log_decay = nn.Parameter(torch.zeros(state_dim))
+
+    def forward(self, inputs: Tensor, prev_state: Optional[Tensor]) -> Tuple[Tensor, Tensor]:
+        if prev_state is None:
+            prev_state = inputs.new_zeros(inputs.shape[0], self.log_decay.shape[0])
+        drive, gate = self.input_projection(inputs).chunk(2, dim=-1)
+        decay = torch.sigmoid(self.log_decay).unsqueeze(0)
+        next_state = decay * prev_state + (1.0 - decay) * torch.tanh(drive)
+        mixed = torch.tanh(next_state) * torch.sigmoid(gate)
+        output = self.output_projection(mixed) + self.skip_projection(inputs)
+        output = self.output_norm(output)
+        output = self.dropout(output)
+        return output, next_state
+
+
 class SequenceEncoder(nn.Module):
-    # 对历史 step 序列编码，输入包含角色、动作和数值特征。
+    # 对历史 step 序列编码，输入包含角色、动作、数值特征和字段级文本特征。
     def __init__(self, num_roles: int, num_actions: int, numeric_dim: int, config: WorkflowWorldModelConfig) -> None:
         super().__init__()
         self.role_embedding = nn.Embedding(num_roles + 1, config.embed_dim, padding_idx=0)
         self.action_embedding = nn.Embedding(num_actions + 1, config.embed_dim, padding_idx=0)
         self.numeric_projection = nn.Linear(numeric_dim, config.model_dim)
-        self.input_projection = nn.Linear(config.embed_dim * 2 + config.model_dim, config.model_dim)
+        self.text_field_type_embedding = nn.Embedding(config.num_step_text_fields + 1, config.embed_dim, padding_idx=0)
+        self.text_field_projection = nn.Linear(config.step_text_field_dim, config.model_dim)
+        self.text_gate = nn.Sequential(
+            nn.Linear(config.model_dim * 2, config.hidden_dim),
+            nn.GELU(),
+            nn.Dropout(config.dropout),
+            nn.Linear(config.hidden_dim, 1),
+        )
+        self.input_projection = nn.Linear(config.embed_dim * 3 + config.model_dim * 2, config.model_dim)
         layer = nn.TransformerEncoderLayer(
             d_model=config.model_dim,
             nhead=config.num_heads,
@@ -425,14 +469,49 @@ class SequenceEncoder(nn.Module):
         )
         self.encoder = nn.TransformerEncoder(layer, num_layers=config.num_layers)
 
-    def forward(self, role_ids: Tensor, action_ids: Tensor, features: Tensor, mask: Tensor) -> Tensor:
+    def _pool_step_text_fields(
+        self,
+        numeric_repr: Tensor,
+        text_field_type_ids: Tensor,
+        text_field_features: Tensor,
+        text_field_mask: Tensor,
+    ) -> Tensor:
+        if text_field_features.shape[-1] == 0:
+            return numeric_repr.new_zeros(numeric_repr.shape)
+        type_repr = self.text_field_type_embedding(text_field_type_ids)
+        value_repr = self.text_field_projection(text_field_features)
+        field_repr = value_repr + type_repr
+        step_context = numeric_repr.unsqueeze(2).expand(-1, -1, field_repr.shape[2], -1)
+        gate_logits = self.text_gate(torch.cat([field_repr, step_context], dim=-1)).squeeze(-1)
+        valid_mask = text_field_mask > 0
+        gate_logits = gate_logits.masked_fill(~valid_mask, -1.0e9)
+        attention = torch.softmax(gate_logits, dim=-1)
+        attention = attention * valid_mask.to(dtype=attention.dtype)
+        denom = attention.sum(dim=-1, keepdim=True).clamp_min(1.0)
+        attention = attention / denom
+        return (field_repr * attention.unsqueeze(-1)).sum(dim=2)
+
+    def forward(
+        self,
+        role_ids: Tensor,
+        action_ids: Tensor,
+        features: Tensor,
+        text_field_type_ids: Tensor,
+        text_field_features: Tensor,
+        text_field_mask: Tensor,
+        mask: Tensor,
+    ) -> Tensor:
         # 输出整个 step 序列的 pooled 表示，而不是逐 token 表示。
         # 对于没有任何历史 step 的样本，直接返回零向量，避免 Transformer
         # 在“整行都被 mask”时产生 NaN。
         role_repr = self.role_embedding(role_ids)
         action_repr = self.action_embedding(action_ids)
         numeric_repr = self.numeric_projection(features)
-        token_repr = self.input_projection(torch.cat([role_repr, action_repr, numeric_repr], dim=-1))
+        text_repr = self._pool_step_text_fields(numeric_repr, text_field_type_ids, text_field_features, text_field_mask)
+        step_has_text = (text_field_mask.sum(dim=-1, keepdim=True) > 0).to(dtype=role_repr.dtype)
+        token_repr = self.input_projection(
+            torch.cat([role_repr, action_repr, self.text_field_type_embedding((step_has_text.squeeze(-1)).long()), numeric_repr, text_repr], dim=-1)
+        )
         has_tokens = mask.sum(dim=1) > 0
         pooled = token_repr.new_zeros(token_repr.shape[0], token_repr.shape[-1])
         if has_tokens.any():
@@ -542,6 +621,52 @@ class HFTextEncoder(nn.Module):
         return _masked_mean(hidden, attention_mask, dim=1)
 
 
+class QwenTextEmbeddingEncoder:
+    def __init__(self, model_name: str, batch_size: int) -> None:
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError as exc:
+            raise ImportError(
+                "sentence-transformers is required when the Qwen text embedding encoder is enabled."
+            ) from exc
+        if not model_name:
+            raise ValueError("qwen_text_encoder_model_name must be set when the Qwen text encoder is enabled.")
+        self.model = SentenceTransformer(model_name)
+        self.batch_size = max(int(batch_size), 1)
+        self.embedding_dim = int(self.model.get_sentence_embedding_dimension())
+        self._cache: Dict[Tuple[str, str], List[float]] = {}
+
+    def encode(self, texts: Sequence[str], prompt_name: Optional[str] = None) -> List[List[float]]:
+        normalized_texts = [str(text or "") for text in texts]
+        results: List[Optional[List[float]]] = [None] * len(normalized_texts)
+        uncached_texts: List[str] = []
+        uncached_indices: List[int] = []
+        cache_key_prefix = str(prompt_name or "")
+        for index, text in enumerate(normalized_texts):
+            cache_key = (cache_key_prefix, text)
+            cached = self._cache.get(cache_key)
+            if cached is not None:
+                results[index] = list(cached)
+                continue
+            uncached_texts.append(text)
+            uncached_indices.append(index)
+        if uncached_texts:
+            kwargs: Dict[str, Any] = {
+                "batch_size": self.batch_size,
+                "convert_to_tensor": False,
+            }
+            if prompt_name:
+                kwargs["prompt_name"] = prompt_name
+            embeddings = self.model.encode(uncached_texts, **kwargs)
+            for offset, embedding in enumerate(embeddings):
+                values = [float(value) for value in embedding.tolist()]
+                index = uncached_indices[offset]
+                cache_key = (cache_key_prefix, normalized_texts[index])
+                self._cache[cache_key] = values
+                results[index] = values
+        return [result if result is not None else [0.0] * self.embedding_dim for result in results]
+
+
 class WorkflowWorldModel(nn.Module):
     # 三个核心阶段：
     # 1. 从当前观测编码 posterior latent。
@@ -557,7 +682,7 @@ class WorkflowWorldModel(nn.Module):
         self.action_name_embedding = nn.Embedding(config.num_actions + 1, config.embed_dim, padding_idx=0)
         self.task_projection = MLP(config.task_dim, config.hidden_dim, config.model_dim, config.dropout)
         self.budget_projection = MLP(config.budget_dim, config.hidden_dim // 2, config.model_dim, config.dropout)
-        self.step_encoder = SequenceEncoder(config.num_roles, config.num_actions, config.step_dim, config)
+        self.step_encoder = SequenceEncoder(config.num_roles, config.num_actions, config.step_numeric_dim, config)
         self.evidence_encoder = SetEncoder(3, config.evidence_dim, config)
         self.graph_encoder = GraphEncoder(config)
         self.action_feature_projection = nn.Linear(config.action_dim, config.model_dim)
@@ -580,10 +705,20 @@ class WorkflowWorldModel(nn.Module):
             nn.Linear(config.hidden_dim, config.hidden_dim),
             nn.GELU(),
         )
-        self.hidden_adapter = nn.Linear(config.hidden_dim * 2, config.hidden_dim)
+        self.observation_state_cell = StructuredStateSpaceCell(
+            input_dim=config.hidden_dim,
+            state_dim=config.hidden_dim,
+            output_dim=config.hidden_dim,
+            dropout=config.dropout,
+        )
         self.posterior_head = nn.Linear(config.hidden_dim, config.latent_dim * 2)
         self.transition_input = nn.Linear(config.latent_dim + config.model_dim * 2, config.hidden_dim)
-        self.transition_cell = nn.GRUCell(config.hidden_dim, config.hidden_dim)
+        self.transition_cell = StructuredStateSpaceCell(
+            input_dim=config.hidden_dim,
+            state_dim=config.hidden_dim,
+            output_dim=config.hidden_dim,
+            dropout=config.dropout,
+        )
         self.prior_head = nn.Sequential(
             nn.Linear(config.hidden_dim + config.model_dim, config.hidden_dim),
             nn.GELU(),
@@ -792,7 +927,15 @@ class WorkflowWorldModel(nn.Module):
         task_repr = self._encode_task_inputs(batch)
         task_type_repr = self.task_type_embedding(batch.task_type_ids)
         workflow_repr = self.workflow_state_embedding(batch.workflow_state_ids)
-        step_repr = self.step_encoder(batch.step_role_ids, batch.step_action_ids, batch.step_features, batch.step_mask)
+        step_repr = self.step_encoder(
+            batch.step_role_ids,
+            batch.step_action_ids,
+            batch.step_features,
+            batch.step_text_field_type_ids,
+            batch.step_text_field_features,
+            batch.step_text_field_mask,
+            batch.step_mask,
+        )
         evidence_repr = self._encode_evidence_inputs(batch)
         budget_repr = self.budget_projection(batch.budget_features)
         graph_repr = self.graph_encoder(
@@ -819,8 +962,8 @@ class WorkflowWorldModel(nn.Module):
                 dim=-1,
             )
         )
-        next_hidden = torch.tanh(self.hidden_adapter(torch.cat([fused, hidden_state], dim=-1)))
-        post_mean, post_logvar = self.posterior_head(fused).chunk(2, dim=-1)
+        posterior_features, next_hidden = self.observation_state_cell(fused, hidden_state)
+        post_mean, post_logvar = self.posterior_head(posterior_features).chunk(2, dim=-1)
         post_logvar = post_logvar.clamp(
             min=self.config.latent_logvar_min,
             max=self.config.latent_logvar_max,
@@ -842,13 +985,13 @@ class WorkflowWorldModel(nn.Module):
         action_repr = self.encode_action(batch.action_kind_ids, batch.action_name_ids, batch.action_features)
         # 根据当前 latent、动作编码和图编码预测下一步 prior。
         transition_input = self.transition_input(torch.cat([latent, action_repr, graph_repr], dim=-1))
-        prior_hidden = self.transition_cell(transition_input, hidden_state)
-        prior_mean, prior_logvar = self.prior_head(torch.cat([prior_hidden, graph_repr], dim=-1)).chunk(2, dim=-1)
+        prior_features, prior_hidden = self.transition_cell(transition_input, hidden_state)
+        prior_mean, prior_logvar = self.prior_head(torch.cat([prior_features, graph_repr], dim=-1)).chunk(2, dim=-1)
         prior_logvar = prior_logvar.clamp(
             min=self.config.latent_logvar_min,
             max=self.config.latent_logvar_max,
         )
-        head_input = torch.cat([prior_mean, graph_repr, prior_hidden], dim=-1)
+        head_input = torch.cat([prior_mean, graph_repr, prior_features], dim=-1)
         # 辅助头提供更密集的中间监督，例如 coverage / conflict / readiness。
         aux = {name: head(head_input).squeeze(-1) for name, head in self.aux_heads.items()}
         reward, reward_logits = self._decode_reward_output(self.reward_head(head_input))
@@ -889,9 +1032,9 @@ class WorkflowWorldModel(nn.Module):
         running_return = latent.new_zeros(latent.shape[0])
         for step_index, action_repr in enumerate(action_embeddings):
             transition_input = self.transition_input(torch.cat([current_latent, action_repr, graph_embedding], dim=-1))
-            current_hidden = self.transition_cell(transition_input, current_hidden)
-            prior_mean, prior_logvar = self.prior_head(torch.cat([current_hidden, graph_embedding], dim=-1)).chunk(2, dim=-1)
-            head_input = torch.cat([prior_mean, graph_embedding, current_hidden], dim=-1)
+            prior_features, current_hidden = self.transition_cell(transition_input, current_hidden)
+            prior_mean, prior_logvar = self.prior_head(torch.cat([prior_features, graph_embedding], dim=-1)).chunk(2, dim=-1)
+            head_input = torch.cat([prior_mean, graph_embedding, prior_features], dim=-1)
             reward, _ = self._decode_reward_output(self.reward_head(head_input))
             cost = self._cost_output(self.cost_head(head_input).squeeze(-1))
             uncertainty = F.softplus(self.uncertainty_head(head_input).squeeze(-1))
@@ -1015,9 +1158,29 @@ class WorkflowStateAdapter:
         self.task_type_to_id = {"unknown": 1}
         self.workflow_state_to_id = {"unknown": 1}
         self.action_kind_to_id = {"unknown": 0, "primitive": 1, "macro": 2, "mutation": 3}
+        self.step_text_field_to_id = {
+            "parameter": 1,
+            "answer_summary": 2,
+            "step_data_summary": 3,
+            "raw_prompt": 4,
+            "raw_response": 5,
+            "system_prompt": 6,
+        }
         self.vocab_frozen = False
+        self.qwen_text_encoder: Optional[QwenTextEmbeddingEncoder] = None
         self.text_tokenizer = None
         self._text_token_cache: Dict[Tuple[str, int], Tuple[List[int], List[int]]] = {}
+        self.config.step_dim = self.config.step_numeric_dim + self.config.step_text_field_dim
+        if self.config.use_qwen_text_encoder:
+            self.qwen_text_encoder = QwenTextEmbeddingEncoder(
+                model_name=self.config.qwen_text_encoder_model_name,
+                batch_size=self.config.qwen_text_encoder_batch_size,
+            )
+            embedding_dim = int(self.qwen_text_encoder.embedding_dim)
+            self.config.task_dim = embedding_dim
+            self.config.evidence_dim = embedding_dim
+            self.config.step_text_field_dim = embedding_dim
+            self.config.step_dim = self.config.step_numeric_dim + embedding_dim
 
     def _id(self, mapping: Dict[str, int], key: object) -> int:
         # 词表冻结后，新 token 统一回退到 unknown；未冻结时则动态扩展。
@@ -1049,6 +1212,37 @@ class WorkflowStateAdapter:
             1.0 if "\n" in text else 0.0,
         ]
         return (features + [0.0] * dim)[:dim]
+
+    def _encode_text_feature(self, text: str, dim: int, prompt_name: Optional[str] = None) -> List[float]:
+        if self.qwen_text_encoder is not None:
+            return self.qwen_text_encoder.encode([str(text or "")], prompt_name=prompt_name)[0][:dim]
+        return self._text_features(text, dim)
+
+    def _step_text_fields(self, step: Dict[str, Any]) -> List[Tuple[str, str]]:
+        return [
+            ("parameter", str(step.get("parameter", ""))),
+            ("answer_summary", str(step.get("answer_summary", ""))),
+            ("step_data_summary", str(step.get("step_data_summary", ""))),
+            ("raw_prompt", str(step.get("raw_prompt", ""))),
+            ("raw_response", str(step.get("raw_response", ""))),
+            ("system_prompt", str(step.get("system_prompt", ""))),
+        ]
+
+    def _encode_step_text_bundle(self, step: Dict[str, Any]) -> List[Tuple[str, List[float], float]]:
+        fields = self._step_text_fields(step)
+        texts = [text for _, text in fields]
+        if self.qwen_text_encoder is not None:
+            encoded = self.qwen_text_encoder.encode(texts)
+        else:
+            encoded = [self._text_features(text, self.config.step_text_field_dim) for text in texts]
+        results: List[Tuple[str, List[float], float]] = []
+        for (field_name, text), embedding in zip(fields, encoded):
+            field_mask = 1.0 if str(text).strip() else 0.0
+            values = list(embedding)[: self.config.step_text_field_dim]
+            if len(values) < self.config.step_text_field_dim:
+                values = values + [0.0] * (self.config.step_text_field_dim - len(values))
+            results.append((field_name, values, field_mask))
+        return results
 
     def _ensure_text_tokenizer(self) -> None:
         if not self.config.use_llm_text_encoder or self.text_tokenizer is not None:
@@ -1136,6 +1330,7 @@ class WorkflowStateAdapter:
     def build_batch(
         self,
         records: Sequence[Dict],
+        hidden_state: Optional[Tensor] = None,
         device: Optional[torch.device | str] = None,
     ) -> WorkflowWorldModelBatch:
         cfg = self.config
@@ -1148,7 +1343,15 @@ class WorkflowStateAdapter:
         workflow_state_ids = torch.zeros(batch_size, dtype=torch.long)
         step_role_ids = torch.zeros(batch_size, cfg.max_steps, dtype=torch.long)
         step_action_ids = torch.zeros(batch_size, cfg.max_steps, dtype=torch.long)
-        step_features = torch.zeros(batch_size, cfg.max_steps, cfg.step_dim)
+        step_features = torch.zeros(batch_size, cfg.max_steps, cfg.step_numeric_dim)
+        step_text_field_type_ids = torch.zeros(batch_size, cfg.max_steps, cfg.num_step_text_fields, dtype=torch.long)
+        step_text_field_features = torch.zeros(
+            batch_size,
+            cfg.max_steps,
+            cfg.num_step_text_fields,
+            cfg.step_text_field_dim,
+        )
+        step_text_field_mask = torch.zeros(batch_size, cfg.max_steps, cfg.num_step_text_fields)
         step_mask = torch.zeros(batch_size, cfg.max_steps)
         evidence_type_ids = torch.zeros(batch_size, cfg.max_evidence, dtype=torch.long)
         evidence_features = torch.zeros(batch_size, cfg.max_evidence, cfg.evidence_dim)
@@ -1203,7 +1406,13 @@ class WorkflowStateAdapter:
                 task_text_input_ids[row] = torch.tensor(input_ids, dtype=torch.long)
                 task_text_attention_mask[row] = torch.tensor(attention_mask, dtype=torch.long)
             else:
-                task_features[row] = torch.tensor(self._text_features(question, cfg.task_dim))
+                task_features[row] = torch.tensor(
+                    self._encode_text_feature(
+                        question,
+                        cfg.task_dim,
+                        prompt_name="query" if self.qwen_text_encoder is not None else None,
+                    )
+                )
             task_type_ids[row] = self._id(self.task_type_to_id, task.get("task_type", task.get("type", "unknown")))
             workflow_state_ids[row] = self._id(
                 self.workflow_state_to_id,
@@ -1214,18 +1423,23 @@ class WorkflowStateAdapter:
             for offset, step in enumerate(steps, start=cfg.max_steps - len(steps)):
                 step_role_ids[row, offset] = self._id(self.role_to_id, step.get("agent", "unknown"))
                 step_action_ids[row, offset] = self._id(self.action_to_id, step.get("action", "unknown"))
-                step_features[row, offset] = torch.tensor(
-                    [
-                        1.0 if bool(step.get("success", False)) else 0.0,
-                        self._normalize_tokens(step.get("tokens", 0.0), clip=200000.0),
-                        self._normalize_cost(step.get("cost", 0.0), clip=1.0e8),
-                        min(len(str(step.get("parameter", ""))), 512) / 512.0,
-                        min(len(str(step.get("answer_summary", ""))), 512) / 512.0,
-                        min(len(str(step.get("step_data_summary", ""))), 1024) / 1024.0,
-                        1.0 if step.get("answer_summary") else 0.0,
-                        1.0 if step.get("step_data_summary") else 0.0,
-                    ][: cfg.step_dim]
-                )
+                numeric_features = [
+                    1.0 if bool(step.get("success", False)) else 0.0,
+                    self._normalize_tokens(step.get("tokens", 0.0), clip=200000.0),
+                    self._normalize_cost(step.get("cost", 0.0), clip=1.0e8),
+                    min(len(str(step.get("parameter", ""))), 512) / 512.0,
+                    min(len(str(step.get("answer_summary", ""))), 512) / 512.0,
+                    min(len(str(step.get("step_data_summary", ""))), 1024) / 1024.0,
+                    1.0 if step.get("answer_summary") else 0.0,
+                    1.0 if step.get("step_data_summary") else 0.0,
+                ]
+                step_features[row, offset] = torch.tensor(numeric_features[: cfg.step_numeric_dim])
+                for field_index, (field_name, embedding, field_mask) in enumerate(self._encode_step_text_bundle(step)):
+                    if field_index >= cfg.num_step_text_fields:
+                        break
+                    step_text_field_type_ids[row, offset, field_index] = self.step_text_field_to_id.get(field_name, 0)
+                    step_text_field_features[row, offset, field_index] = torch.tensor(embedding[: cfg.step_text_field_dim])
+                    step_text_field_mask[row, offset, field_index] = field_mask
                 step_mask[row, offset] = 1.0
 
             evidence_items: List[Tuple[str, str]] = []
@@ -1243,7 +1457,9 @@ class WorkflowStateAdapter:
                     evidence_text_input_ids[row, offset] = torch.tensor(input_ids, dtype=torch.long)
                     evidence_text_attention_mask[row, offset] = torch.tensor(attention_mask, dtype=torch.long)
                 else:
-                    evidence_features[row, offset] = torch.tensor(self._text_features(text, cfg.evidence_dim))
+                    evidence_features[row, offset] = torch.tensor(
+                        self._encode_text_feature(text, cfg.evidence_dim)
+                    )
                 evidence_mask[row, offset] = 1.0
 
             budget = state.get("budget", {})
@@ -1322,6 +1538,9 @@ class WorkflowStateAdapter:
             step_role_ids=step_role_ids,
             step_action_ids=step_action_ids,
             step_features=step_features,
+            step_text_field_type_ids=step_text_field_type_ids,
+            step_text_field_features=step_text_field_features,
+            step_text_field_mask=step_text_field_mask,
             step_mask=step_mask,
             evidence_type_ids=evidence_type_ids,
             evidence_features=evidence_features,
@@ -1338,6 +1557,7 @@ class WorkflowStateAdapter:
             action_kind_ids=action_kind_ids,
             action_name_ids=action_name_ids,
             action_features=action_features,
+            hidden_state=hidden_state,
             targets=WorkflowWorldModelTargets(
                 reward=reward,
                 cost=cost,

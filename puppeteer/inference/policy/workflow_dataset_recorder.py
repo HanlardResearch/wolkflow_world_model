@@ -219,6 +219,12 @@ class WorkflowDatasetRecorder:
                     "action_parameter": self._summarize_text(action.action.get("parameter"), limit=120),
                     "result_summary": self._summarize_text(action.result.get("step_data"), limit=240),
                     "answer_summary": self._summarize_text(action.result.get("answer"), limit=160),
+                    "scheduler_messages": trajectory_step.get("scheduler_exchange", {}).get("messages", []),
+                    "scheduler_response": trajectory_step.get("scheduler_exchange", {}).get("response_text", ""),
+                    "agent_raw_prompt": action.result.get("raw_prompt", ""),
+                    "agent_raw_response": action.result.get("raw_response", ""),
+                    "agent_raw_messages": action.result.get("raw_messages", []),
+                    "agent_system_prompt": action.result.get("system_prompt", ""),
                     "tree_parent_value": self._step_world_model_target(
                         trajectory_step,
                         "world_model_parent_value",
@@ -241,6 +247,15 @@ class WorkflowDatasetRecorder:
                         None,
                     ),
                     "metrics": metrics,
+                },
+                "raw_text": {
+                    "scheduler": trajectory_step.get("scheduler_exchange", {}),
+                    "agent": {
+                        "prompt": action.result.get("raw_prompt", ""),
+                        "response": action.result.get("raw_response", ""),
+                        "messages": action.result.get("raw_messages", []),
+                        "system_prompt": action.result.get("system_prompt", ""),
+                    },
                 },
             }
             records.append(record)
@@ -317,6 +332,8 @@ class WorkflowDatasetRecorder:
                     },
                     "metadata": {
                         "agent_role": "TerminatorAgent",
+                        "scheduler_messages": terminal_step.get("scheduler_exchange", {}).get("messages", []),
+                        "scheduler_response": terminal_step.get("scheduler_exchange", {}).get("response_text", ""),
                         "tree_parent_value": self._step_world_model_target(
                             terminal_step,
                             "world_model_parent_value",
@@ -339,6 +356,10 @@ class WorkflowDatasetRecorder:
                             None,
                         ),
                         "metrics": metrics,
+                    },
+                    "raw_text": {
+                        "scheduler": terminal_step.get("scheduler_exchange", {}),
+                        "agent": {},
                     },
                 }
             )
@@ -448,6 +469,10 @@ class WorkflowDatasetRecorder:
                     "success": success,
                     "step_data_summary": step_data,
                     "answer_summary": answer_summary,
+                    "raw_prompt": action.result.get("raw_prompt", ""),
+                    "raw_response": action.result.get("raw_response", ""),
+                    "raw_messages": action.result.get("raw_messages", []),
+                    "system_prompt": action.result.get("system_prompt", ""),
                     "tokens": self._to_float(action.tokens),
                     "cost": self._to_float(action.cost),
                 }
@@ -725,8 +750,7 @@ class WorkflowDatasetRecorder:
         limit = self.max_summary_chars if limit is None else limit
         if hasattr(self.scheduler, "_summarize_text"):
             return str(self.scheduler._summarize_text(value, limit=limit))
-        text = str(value or "").replace("\n", " ").strip()
-        return text if len(text) <= limit else text[:limit] + "..."
+        return str(value or "").replace("\n", " ").strip()
 
     def _normalize_success(self, success: Any) -> bool:
         # 兼容布尔值和字符串 "Success"/"Failure" 两种表示。

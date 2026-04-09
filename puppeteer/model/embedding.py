@@ -39,7 +39,6 @@ class OpenAIEmbedding(EmbeddingFunction):
         else:
             text = [t.replace("\n", " ") for t in text]
 
-        text = [t[:8191] if len(t) > 8191 else t for t in text]
         text = ["none"] if all(len(t) == 0 for t in text) else text
 
         model_log_and_print(f"[Embedding] {text}")
@@ -67,13 +66,6 @@ class RewardModelTokenRepresentation():
         
     
     def truncate(self, messages):
-        length = sum(len(message["content"]) for message in messages)
-        
-        while length > 12000:
-            for message in messages:
-                message["content"] = message["content"][-int(len(message["content"]) * 0.75):]  
-            length = sum(len(message["content"]) for message in messages)  
-        
         return messages
 
     def __call__(self, messages:List):

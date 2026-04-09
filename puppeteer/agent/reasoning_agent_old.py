@@ -98,8 +98,8 @@ class Reasoning_Agent(Agent):
         return  parameter
     
     def _compress_data(self, data):
-        if len(data) > 5000:
-            data = data[:5000]
+        if data is None:
+            return ""
         return data
     
     def _execute_action(self, format_action, global_info):

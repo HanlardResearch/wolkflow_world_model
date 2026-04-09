@@ -5,7 +5,7 @@ model_weight_path: "/extrahome0/HF_models/Qwen/Qwen3.5-4B" # the path to the fol
 api_keys:
   openai_api_key: 'sk-dummy' # openai api key
   openai_base_url: "http://localhost:8001/v1" # openai base url, e.g., https://api.openai.com/v1/
-  tavily_api_key: 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 # tavily api key for web search
+  tavily_api_key: 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 # tavily api key for web search
 
 max_retry_times: 10 # maximum number of times to retry API calls
 max_json_reformat_turns: 10 # maximum number of times to retry JSON parsing/reformatting
@@ -15,5 +15,5 @@ file_path:
   root_file_path: ./data # the path to the folder containing all the files which agents might need
 
 graph:
-  max_parallel_paths: 4 # maximum number of parallel paths to explore in the graph
-  max_step_num: 5 # maximum number of steps (nodes) in each path
+  max_parallel_paths: 8 # maximum number of parallel paths to explore in the graph
+  max_step_num: 32 # maximum number of steps (nodes) in each path

@@ -602,7 +602,7 @@ def render_dashboard(report: Dict[str, Any], output_dir: str) -> str:
 
     reward_examples = report["model_input_hash"]["labels"]["reward"].get("examples", [])[:8]
     if reward_examples:
-        ex_labels = [f'{item["action_name"][:10]}#{index + 1}' for index, item in enumerate(reward_examples)]
+        ex_labels = [f'{item["action_name"]}#{index + 1}' for index, item in enumerate(reward_examples)]
         ex_values = [float(item["range"]) for item in reward_examples]
         axes[1].barh(ex_labels, ex_values, color="#d64545")
         axes[1].invert_yaxis()

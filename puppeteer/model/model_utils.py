@@ -16,16 +16,6 @@ def model_log_and_print(content):
         print(content)
 
 def truncate_messages(messages):
-    max_length = 0
-    max_index = 0
-    for i, msg in enumerate(messages):
-        if len(msg.get('content', '')) > max_length:
-            max_length = len(msg['content'])
-            max_index = i
-
-    content = messages[max_index]['content']
-    factor = 1/(2**APIConfig.TRUNCATE_FACTOR)
-    messages[max_index]['content'] = content[:int(len(content)*factor)]  
     return messages
 
 

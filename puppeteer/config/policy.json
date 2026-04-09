@@ -16,9 +16,9 @@
     "entropy_coef": 0.01
   },
   "agent": {
-    "max_num_agents": 4,
-    "next_num_agents": 4,
-    "max_path": 6,
+    "max_num_agents": 6,
+    "next_num_agents": 6,
+    "max_path": 12,
     "threshold": 0.5,
     "reward_factors": {
       "default": -1.0,
@@ -27,7 +27,7 @@
     }
   },
   "policy_llm": {
-    "model_name": "Qwen3.5-4B"
+    "model_name": "Qwen3.5-35B"
   },
   "llm_scheduler": {
     "model_name": "Qwen3.5-35B",
@@ -35,17 +35,17 @@
     "model_path": "/extrahome0/HF_models/Qwen/Qwen3.5-35B-A3B-FP8",
     "mode": "multi",
     "gpu_ids": [0, 1, 2, 3],
-    "top_k": 4,
-    "top1_activation_threshold": 0.72,
-    "top1_margin_threshold": 0.28,
-    "top2_cumulative_threshold": 0.88,
-    "top3_cumulative_threshold": 0.97,
+    "top_k": 6,
+    "top1_activation_threshold": 0.85,
+    "top1_margin_threshold": 0.35,
+    "top2_cumulative_threshold": 0.92,
+    "top3_cumulative_threshold": 0.98,
     "diversity_enabled": true,
-    "min_keep_k": 1,
-    "diversity_min_keep_k": 2,
-    "conflict_min_keep_k": 3,
-    "diversity_early_step": 2,
-    "diversity_max_extra": 1,
+    "min_keep_k": 2,
+    "diversity_min_keep_k": 3,
+    "conflict_min_keep_k": 4,
+    "diversity_early_step": 3,
+    "diversity_max_extra": 2,
     "backend": "vllm",
     "tensor_parallel_size": 4,
     "gpu_memory_utilization": 0.9,
@@ -72,7 +72,7 @@
   },
   "world_model_dataset": {
     "enabled": true,
-    "output_dir": "results/world_model_dataset-llm",
+    "output_dir": "results/world_model_dataset-0409",
     "use_dataset_subdirs": true,
     "split_by_time": true,
     "time_granularity": "second",
