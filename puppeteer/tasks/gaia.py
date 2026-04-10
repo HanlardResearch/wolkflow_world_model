@@ -7,6 +7,21 @@ from tqdm import tqdm
 from tasks.evaluator import BenchmarkEvaluator
 
 
+def _normalize_levels(level):
+    if isinstance(level, str):
+        token = level.strip().lower()
+        if token == "all":
+            return [1, 2, 3]
+        if token.isdigit():
+            return [int(token)]
+        raise ValueError(f"Unsupported GAIA level value: {level}")
+    if isinstance(level, int):
+        if level <= 0:
+            raise ValueError(f"Unsupported GAIA level value: {level}")
+        return [level]
+    raise ValueError(f"Unsupported GAIA level value: {level}")
+
+
 def _candidate_metadata_paths(data_dir, mode, level):
     roots = [
         Path(data_dir) / "2023" / mode,
@@ -88,22 +103,24 @@ def format_question(row, idx, base_dir):
 
 
 def run(runner, evaluator, results_dir, mode, data_limit=None, level=1, data_dir="data/GAIA"):
-    dataset = load_dataset(mode=mode, level=level, data_limit=data_limit, data_dir=data_dir)
-    base_dir = Path(dataset.attrs.get("gaia_base_dir", Path(data_dir) / "2023" / mode))
-    result_path = Path(results_dir) / f"GAIA_{mode}_level{level}.jsonl"
+    levels = _normalize_levels(level)
+    for current_level in levels:
+        dataset = load_dataset(mode=mode, level=current_level, data_limit=data_limit, data_dir=data_dir)
+        base_dir = Path(dataset.attrs.get("gaia_base_dir", Path(data_dir) / "2023" / mode))
+        result_path = Path(results_dir) / f"GAIA_{mode}_level{current_level}.jsonl"
 
-    with open(result_path, "w", encoding="utf-8") as fd:
-        for idx, row in tqdm(dataset.iterrows(), total=len(dataset)):
-            task = format_question(row, idx, base_dir)
-            final_ans = runner.run_reasoning(task)
-            flag = None
-            if task.get("Answer") is not None:
-                flag = BenchmarkEvaluator.check_gaia(final_ans, task["Answer"])
-            record = {
-                "id": task["id"],
-                "level": task.get("level"),
-                "pred": final_ans,
-                "correct": flag,
-                "file_name": task.get("file_name"),
-            }
-            fd.write(json.dumps(record, ensure_ascii=False) + "\n")
+        with open(result_path, "w", encoding="utf-8") as fd:
+            for idx, row in tqdm(dataset.iterrows(), total=len(dataset)):
+                task = format_question(row, idx, base_dir)
+                final_ans = runner.run_reasoning(task)
+                flag = None
+                if task.get("Answer") is not None:
+                    flag = BenchmarkEvaluator.check_gaia(final_ans, task["Answer"])
+                record = {
+                    "id": task["id"],
+                    "level": task.get("level"),
+                    "pred": final_ans,
+                    "correct": flag,
+                    "file_name": task.get("file_name"),
+                }
+                fd.write(json.dumps(record, ensure_ascii=False) + "\n")

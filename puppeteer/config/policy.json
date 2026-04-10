@@ -72,7 +72,7 @@
   },
   "world_model_dataset": {
     "enabled": true,
-    "output_dir": "results/world_model_dataset-0409",
+    "output_dir": "results/world_model_dataset-0409-1754",
     "use_dataset_subdirs": true,
     "split_by_time": true,
     "time_granularity": "second",

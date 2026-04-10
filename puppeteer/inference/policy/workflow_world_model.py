@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import atexit
 import inspect
+import json
 import math
+import os
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -255,8 +258,10 @@ class WorkflowWorldModelConfig:
     num_task_types: int = 32
     num_workflow_states: int = 32
     use_qwen_text_encoder: bool = False
-    qwen_text_encoder_model_name: str = "Qwen/Qwen3-Embedding-0.6B"
+    qwen_text_encoder_model_name: str = "/extrahome0/HF_models/Qwen/Qwen3-Embedding-0.6B"
     qwen_text_encoder_batch_size: int = 16
+    qwen_text_encoder_devices: Tuple[str, ...] = field(default_factory=tuple)
+    qwen_text_cache_path: str = ""
     use_llm_text_encoder: bool = False
     text_encoder_model_path: str = ""
     text_encoder_freeze: bool = True
@@ -450,7 +455,12 @@ class SequenceEncoder(nn.Module):
         self.role_embedding = nn.Embedding(num_roles + 1, config.embed_dim, padding_idx=0)
         self.action_embedding = nn.Embedding(num_actions + 1, config.embed_dim, padding_idx=0)
         self.numeric_projection = nn.Linear(numeric_dim, config.model_dim)
-        self.text_field_type_embedding = nn.Embedding(config.num_step_text_fields + 1, config.embed_dim, padding_idx=0)
+        self.text_field_type_embedding = nn.Embedding(
+            config.num_step_text_fields + 1,
+            config.model_dim,
+            padding_idx=0,
+        )
+        self.step_text_presence_embedding = nn.Embedding(2, config.embed_dim, padding_idx=0)
         self.text_field_projection = nn.Linear(config.step_text_field_dim, config.model_dim)
         self.text_gate = nn.Sequential(
             nn.Linear(config.model_dim * 2, config.hidden_dim),
@@ -510,7 +520,16 @@ class SequenceEncoder(nn.Module):
         text_repr = self._pool_step_text_fields(numeric_repr, text_field_type_ids, text_field_features, text_field_mask)
         step_has_text = (text_field_mask.sum(dim=-1, keepdim=True) > 0).to(dtype=role_repr.dtype)
         token_repr = self.input_projection(
-            torch.cat([role_repr, action_repr, self.text_field_type_embedding((step_has_text.squeeze(-1)).long()), numeric_repr, text_repr], dim=-1)
+            torch.cat(
+                [
+                    role_repr,
+                    action_repr,
+                    self.step_text_presence_embedding((step_has_text.squeeze(-1)).long()),
+                    numeric_repr,
+                    text_repr,
+                ],
+                dim=-1,
+            )
         )
         has_tokens = mask.sum(dim=1) > 0
         pooled = token_repr.new_zeros(token_repr.shape[0], token_repr.shape[-1])
@@ -622,7 +641,13 @@ class HFTextEncoder(nn.Module):
 
 
 class QwenTextEmbeddingEncoder:
-    def __init__(self, model_name: str, batch_size: int) -> None:
+    def __init__(
+        self,
+        model_name: str,
+        batch_size: int,
+        devices: Optional[Sequence[str]] = None,
+        cache_path: str = "",
+    ) -> None:
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError as exc:
@@ -631,10 +656,21 @@ class QwenTextEmbeddingEncoder:
             ) from exc
         if not model_name:
             raise ValueError("qwen_text_encoder_model_name must be set when the Qwen text encoder is enabled.")
-        self.model = SentenceTransformer(model_name)
+        normalized_devices = [str(device).strip() for device in (devices or []) if str(device).strip()]
+        primary_device = normalized_devices[0] if normalized_devices else None
+        load_device = "cpu" if len(normalized_devices) > 1 else primary_device
+        self.model = SentenceTransformer(model_name, device=load_device)
         self.batch_size = max(int(batch_size), 1)
-        self.embedding_dim = int(self.model.get_sentence_embedding_dimension())
+        if hasattr(self.model, "get_embedding_dimension"):
+            self.embedding_dim = int(self.model.get_embedding_dimension())
+        else:
+            self.embedding_dim = int(self.model.get_sentence_embedding_dimension())
         self._cache: Dict[Tuple[str, str], List[float]] = {}
+        self.devices: Tuple[str, ...] = tuple(normalized_devices)
+        self._pool: Optional[Dict[str, Any]] = None
+        self.cache_path = str(cache_path or "").strip()
+        if self.cache_path:
+            self._load_cache(self.cache_path)
 
     def encode(self, texts: Sequence[str], prompt_name: Optional[str] = None) -> List[List[float]]:
         normalized_texts = [str(text or "") for text in texts]
@@ -657,7 +693,24 @@ class QwenTextEmbeddingEncoder:
             }
             if prompt_name:
                 kwargs["prompt_name"] = prompt_name
-            embeddings = self.model.encode(uncached_texts, **kwargs)
+            if self._pool is not None and not prompt_name:
+                kwargs.pop("prompt_name", None)
+                embeddings = self.model.encode_multi_process(
+                    uncached_texts,
+                    pool=self._pool,
+                    batch_size=self.batch_size,
+                )
+            else:
+                if len(self.devices) > 1 and not prompt_name:
+                    self._ensure_pool()
+                if self._pool is not None and not prompt_name:
+                    embeddings = self.model.encode_multi_process(
+                        uncached_texts,
+                        pool=self._pool,
+                        batch_size=self.batch_size,
+                    )
+                else:
+                    embeddings = self.model.encode(uncached_texts, **kwargs)
             for offset, embedding in enumerate(embeddings):
                 values = [float(value) for value in embedding.tolist()]
                 index = uncached_indices[offset]
@@ -665,6 +718,40 @@ class QwenTextEmbeddingEncoder:
                 self._cache[cache_key] = values
                 results[index] = values
         return [result if result is not None else [0.0] * self.embedding_dim for result in results]
+
+    def close(self) -> None:
+        if self._pool is not None:
+            self.model.stop_multi_process_pool(self._pool)
+            self._pool = None
+
+    def _ensure_pool(self) -> None:
+        if self._pool is None and len(self.devices) > 1:
+            self._pool = self.model.start_multi_process_pool(list(self.devices))
+            atexit.register(self.close)
+
+    def _load_cache(self, cache_path: str) -> None:
+        if not cache_path:
+            return
+        paths: List[str] = []
+        if os.path.isdir(cache_path):
+            for name in sorted(os.listdir(cache_path)):
+                if name.endswith(".jsonl"):
+                    paths.append(os.path.join(cache_path, name))
+        elif os.path.isfile(cache_path):
+            paths.append(cache_path)
+        for path in paths:
+            with open(path, "r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    payload = json.loads(line)
+                    prompt_name = str(payload.get("prompt_name", ""))
+                    text = str(payload.get("text", ""))
+                    embedding = payload.get("embedding", [])
+                    if not isinstance(embedding, list):
+                        continue
+                    self._cache[(prompt_name, text)] = [float(value) for value in embedding]
 
 
 class WorkflowWorldModel(nn.Module):
@@ -1175,6 +1262,8 @@ class WorkflowStateAdapter:
             self.qwen_text_encoder = QwenTextEmbeddingEncoder(
                 model_name=self.config.qwen_text_encoder_model_name,
                 batch_size=self.config.qwen_text_encoder_batch_size,
+                devices=self.config.qwen_text_encoder_devices,
+                cache_path=self.config.qwen_text_cache_path,
             )
             embedding_dim = int(self.qwen_text_encoder.embedding_dim)
             self.config.task_dim = embedding_dim
@@ -1230,11 +1319,10 @@ class WorkflowStateAdapter:
 
     def _encode_step_text_bundle(self, step: Dict[str, Any]) -> List[Tuple[str, List[float], float]]:
         fields = self._step_text_fields(step)
-        texts = [text for _, text in fields]
         if self.qwen_text_encoder is not None:
-            encoded = self.qwen_text_encoder.encode(texts)
+            encoded = self.qwen_text_encoder.encode([text for _, text in fields])
         else:
-            encoded = [self._text_features(text, self.config.step_text_field_dim) for text in texts]
+            encoded = [self._text_features(text, self.config.step_text_field_dim) for _, text in fields]
         results: List[Tuple[str, List[float], float]] = []
         for (field_name, text), embedding in zip(fields, encoded):
             field_mask = 1.0 if str(text).strip() else 0.0
@@ -1410,7 +1498,6 @@ class WorkflowStateAdapter:
                     self._encode_text_feature(
                         question,
                         cfg.task_dim,
-                        prompt_name="query" if self.qwen_text_encoder is not None else None,
                     )
                 )
             task_type_ids[row] = self._id(self.task_type_to_id, task.get("task_type", task.get("type", "unknown")))

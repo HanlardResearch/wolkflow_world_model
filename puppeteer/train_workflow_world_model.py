@@ -54,9 +54,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--learning-rate", type=float, default=1e-4)
     parser.add_argument("--weight-decay", type=float, default=1e-5)
+    parser.add_argument("--dropout", type=float, default=0.1, help="Dropout used throughout the world model.")
+    parser.add_argument("--model-dim", type=int, default=128, help="Transformer/model width.")
+    parser.add_argument("--hidden-dim", type=int, default=256, help="Hidden width for MLP/SSM blocks.")
+    parser.add_argument("--latent-dim", type=int, default=256, help="Latent state width.")
+    parser.add_argument("--num-heads", type=int, default=4, help="Number of attention heads.")
+    parser.add_argument("--num-layers", type=int, default=2, help="Number of transformer encoder layers.")
     parser.add_argument("--val-ratio", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--gradient-clip", type=float, default=1.0)
+    parser.add_argument("--early-stop-patience", type=int, default=-1, help="Stop after N unimproved epochs; <=0 disables.")
+    parser.add_argument("--early-stop-min-epochs", type=int, default=1, help="Do not early-stop before this epoch.")
     parser.add_argument(
         "--value-loss-weight",
         type=float,
@@ -173,7 +181,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--qwen-text-encoder-model-name",
         type=str,
-        default="Qwen/Qwen3-Embedding-0.6B",
+        default="/extrahome0/HF_models/Qwen/Qwen3-Embedding-0.6B",
         help="SentenceTransformer model name or local path used for text embeddings.",
     )
     parser.add_argument(
@@ -181,6 +189,18 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=16,
         help="Batch size used inside the SentenceTransformer text encoder.",
+    )
+    parser.add_argument(
+        "--qwen-text-encoder-devices",
+        type=str,
+        default="",
+        help="Comma-separated devices for parallel Qwen text encoding, e.g. cuda:0,cuda:1,cuda:2,cuda:3.",
+    )
+    parser.add_argument(
+        "--qwen-text-cache-path",
+        type=str,
+        default="",
+        help="Optional JSONL cache file or directory containing precomputed Qwen text embeddings.",
     )
     parser.add_argument("--use-llm-text-encoder", action="store_true", help="Use a HuggingFace LLM to encode task/evidence text.")
     parser.add_argument(
@@ -946,7 +966,12 @@ def split_by_episode(records: Sequence[Dict], val_ratio: float, seed: int) -> Tu
     episode_ids = list(episode_to_records.keys())
     rng = random.Random(seed)
     rng.shuffle(episode_ids)
-    val_count = int(len(episode_ids) * val_ratio)
+    episode_count = len(episode_ids)
+    val_count = int(episode_count * val_ratio)
+    if val_ratio > 0 and episode_count > 1:
+        val_count = max(val_count, 1)
+    if episode_count > 1:
+        val_count = min(val_count, episode_count - 1)
     val_episodes = set(episode_ids[:val_count])
     train_records: List[Dict] = []
     val_records: List[Dict] = []
@@ -1017,12 +1042,22 @@ def build_adapter_config(args: argparse.Namespace) -> WorkflowWorldModelConfig:
     config.use_qwen_text_encoder = bool(args.use_qwen_text_encoder)
     config.qwen_text_encoder_model_name = str(args.qwen_text_encoder_model_name)
     config.qwen_text_encoder_batch_size = int(args.qwen_text_encoder_batch_size)
+    config.qwen_text_encoder_devices = tuple(
+        device.strip() for device in str(args.qwen_text_encoder_devices).split(",") if device.strip()
+    )
+    config.qwen_text_cache_path = str(args.qwen_text_cache_path)
     config.use_llm_text_encoder = bool(args.use_llm_text_encoder)
     if config.use_qwen_text_encoder:
         config.use_llm_text_encoder = False
     config.text_encoder_model_path = str(args.text_encoder_model_path)
     config.text_encoder_freeze = not bool(args.text_encoder_trainable)
     config.text_encoder_dtype = str(args.text_encoder_dtype)
+    config.dropout = float(args.dropout)
+    config.model_dim = int(args.model_dim)
+    config.hidden_dim = int(args.hidden_dim)
+    config.latent_dim = int(args.latent_dim)
+    config.num_heads = int(args.num_heads)
+    config.num_layers = int(args.num_layers)
     config.task_text_max_length = int(args.task_text_max_length)
     config.evidence_text_max_length = int(args.evidence_text_max_length)
     config.stable_next_posterior_targets = not bool(args.disable_latent_target_eval)
@@ -1766,10 +1801,9 @@ def main() -> None:
 
     best_val = float("inf")
     best_path = ""
+    unimproved_epochs = 0
     try:
         for epoch in range(1, args.epochs + 1):
-            # 这里暂不引入 lr scheduler、mixed precision、early stopping 等训练工程特性，
-            # 先保持训练流程简单、稳定、容易调试。
             train_metrics = train_epoch(
                 model=model,
                 adapter=adapter,
@@ -1795,15 +1829,27 @@ def main() -> None:
             if current_val < best_val:
                 # 以验证集 total loss 作为最优指标，保存当前最佳 checkpoint。
                 best_val = current_val
+                unimproved_epochs = 0
                 best_path = save_checkpoint(
                     output_dir=args.output_dir,
                     model=model,
                     adapter=adapter,
                 model_config=model_config,
                 epoch=epoch,
-                metrics={"train": train_metrics, "val": val_metrics, "key_val_metrics": key_val_metrics},
-            )
+                    metrics={"train": train_metrics, "val": val_metrics, "key_val_metrics": key_val_metrics},
+                )
+            else:
+                unimproved_epochs += 1
             log_metrics_to_tracker(tracker, epoch, train_metrics, val_metrics, best_val, key_val_metrics=key_val_metrics)
+            if (
+                args.early_stop_patience > 0
+                and epoch >= args.early_stop_min_epochs
+                and unimproved_epochs >= args.early_stop_patience
+            ):
+                print(
+                    f"Early stopping at epoch {epoch}: no validation improvement for {unimproved_epochs} epoch(s)."
+                )
+                break
     finally:
         if tracker is not None:
             tracker.finish()

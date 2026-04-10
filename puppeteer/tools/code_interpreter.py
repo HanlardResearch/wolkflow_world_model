@@ -9,6 +9,7 @@ import subprocess
 from subprocess import check_output
 import time
 import signal
+from typing import List
 
 FILE_REGEX = r"(^//.|^/|^ [a-zA-Z])?:?/.+ (/$)"
 class CodeInterpreter(Tool):
@@ -78,6 +79,43 @@ class PythonInterpreter(CodeInterpreter):
                 time.sleep(1)  # Allow some time for graceful termination
                 if process.poll() is None:  # Force kill the group if still running
                     os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+
+    def _python_command_candidates(self) -> List[List[str]]:
+        candidates: List[List[str]] = []
+        configured_python = os.environ.get("CHATDEV_PYTHON_BIN", "").strip()
+        if configured_python:
+            candidates.append([configured_python, "agent-main.py"])
+
+        conda_prefix = os.environ.get("CONDA_PREFIX", "").strip()
+        if conda_prefix:
+            if os.name == "nt":
+                candidates.append([os.path.join(conda_prefix, "python.exe"), "agent-main.py"])
+            else:
+                candidates.append([os.path.join(conda_prefix, "bin", "python"), "agent-main.py"])
+
+        if os.name != "nt":
+            conda_exe = shutil.which("conda")
+            if conda_exe:
+                candidates.append([conda_exe, "run", "-n", "verl", "python3", "agent-main.py"])
+                candidates.append([conda_exe, "run", "-n", "verl", "python", "agent-main.py"])
+
+        for executable_name in ("python", "python3") if os.name != "nt" else ("python", "py"):
+            resolved = shutil.which(executable_name)
+            if resolved:
+                if executable_name == "py":
+                    candidates.append([resolved, "-3", "agent-main.py"])
+                else:
+                    candidates.append([resolved, "agent-main.py"])
+
+        unique_candidates: List[List[str]] = []
+        seen = set()
+        for command in candidates:
+            key = tuple(command)
+            if key in seen:
+                continue
+            seen.add(key)
+            unique_candidates.append(command)
+        return unique_candidates
         
     def run(self, work_path, code_path, file_path):
         """Executes a process and handles file movement, command execution, and timeouts."""
@@ -85,49 +123,55 @@ class PythonInterpreter(CodeInterpreter):
             if len(file_path) > 0:
                 self.move_file(src_path=file_path, dest_path=work_path)
 
-            # Determine the command to run based on the operating system
-            if os.name == 'nt':  # Windows
-                command = f"cd {work_path} && python agent-main.py"
-                process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
-            else:  # Linux/macOS
-                command = f"cd {work_path} && conda activate verl && python3 agent-main.py"
-                process = subprocess.Popen(command, shell=True, preexec_fn=os.setsid, stdout=subprocess.PIPE,
-                                            stderr=subprocess.PIPE)
+            last_error_output = ""
+            attempted_commands: List[str] = []
+            for command in self._python_command_candidates():
+                attempted_commands.append(" ".join(command))
+                try:
+                    popen_kwargs = {
+                        "cwd": work_path,
+                        "stdout": subprocess.PIPE,
+                        "stderr": subprocess.PIPE,
+                        "shell": False,
+                    }
+                    if os.name == "nt":
+                        popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+                    else:
+                        popen_kwargs["preexec_fn"] = os.setsid
+                    process = subprocess.Popen(command, **popen_kwargs)
+                except FileNotFoundError:
+                    continue
 
-            try:
-                # Wait for process completion with a timeout of 10 seconds
-                out, err = process.communicate(timeout=10)
-            except subprocess.TimeoutExpired:
-                self.robust_kill(process)
-                if self.timeout_detected:
-                    return False, "The process timed out after 10 seconds."
-                else:
+                try:
+                    out, err = process.communicate(timeout=10)
+                except subprocess.TimeoutExpired:
+                    self.robust_kill(process)
+                    if self.timeout_detected:
+                        return False, "The process timed out after 10 seconds."
                     return True, "The process completes without encountering any errors."
 
-            return_code = process.returncode
-            output = out.decode('utf-8', errors='ignore')
-            error_output = err.decode('utf-8', errors='ignore')
+                if process.poll() is None:
+                    self.robust_kill(process)
 
-            # If the process is still running after the timeout
-            if process.poll() is None:
-                self.robust_kill(process)  # Ensure the process is terminated
-            return_code = process.returncode
+                return_code = process.returncode
+                output = out.decode('utf-8', errors='ignore')
+                error_output = err.decode('utf-8', errors='ignore')
 
-            # Handle return code and output
-            if return_code == 0:
-                # Clean up file paths in the output for readability
-                work_path = os.getcwd()
-                output = output.replace(work_path, "")
-                return True, output
-            else:
-                # Handle errors in the output
-                if error_output:
-                    work_path = os.getcwd()
-                    if "Traceback".lower() in error_output.lower():
-                        errs = error_output.replace(work_path + "/", "").replace(work_path, "")
-                        return False, errs
-                return False, error_output
+                if return_code == 0:
+                    workspace_root = os.getcwd()
+                    output = output.replace(workspace_root, "")
+                    return True, output
+
+                last_error_output = error_output or output or f"Python command failed with exit code {return_code}."
+                if "Traceback" in last_error_output:
+                    workspace_root = os.getcwd()
+                    errs = last_error_output.replace(workspace_root + "/", "").replace(workspace_root, "")
+                    return False, errs
+
+            attempted = "; ".join(attempted_commands) if attempted_commands else "<none>"
+            if last_error_output:
+                return False, f"{last_error_output}\nAttempted commands: {attempted}"
+            return False, f"No usable Python runtime was found. Attempted commands: {attempted}"
 
         except subprocess.CalledProcessError as e:
             return False, f"CalledProcessError: {str(e)}"

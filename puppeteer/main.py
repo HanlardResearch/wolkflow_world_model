@@ -10,7 +10,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run benchmark tasks")
     parser.add_argument("task", choices=["MMLU-Pro", "gsm-hard", "SRDD", "CW", "GAIA"])
     parser.add_argument("mode", choices=["validation", "test"])
-    parser.add_argument("--level", type=int, default=1)
+    parser.add_argument("--level", type=str, default="all")
     parser.add_argument("--index", type=int, default=-1)
     parser.add_argument("--data_limit", type=int, default=1)
     parser.add_argument("--personas", type=str, default="personas/personas.jsonl")
